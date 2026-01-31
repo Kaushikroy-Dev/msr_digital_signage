@@ -1,0 +1,130 @@
+.layer-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.layer-panel-header {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.layer-panel-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.layer-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: var(--background);
+    border-radius: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+}
+
+.layer-item:hover {
+    background: var(--surface);
+}
+
+.layer-item.selected {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.layer-item.dragging {
+    opacity: 0.5;
+}
+
+.layer-item-drag-handle {
+    cursor: grab;
+    color: var(--text-secondary);
+    font-size: 12px;
+    user-select: none;
+}
+
+.layer-item.selected .layer-item-drag-handle {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.layer-item-icon {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.layer-item.selected .layer-item-icon {
+    color: white;
+}
+
+.layer-item-name {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.layer-item-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.layer-item:hover .layer-item-actions,
+.layer-item.selected .layer-item-actions {
+    opacity: 1;
+}
+
+.layer-action-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.layer-item.selected .layer-action-btn {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.layer-action-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: var(--text);
+}
+
+.layer-item.selected .layer-action-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.layer-action-btn.delete:hover {
+    background: rgba(220, 0, 78, 0.2);
+    color: var(--secondary);
+}
+
+.layer-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+}

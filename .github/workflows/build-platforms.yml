@@ -1,0 +1,257 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ created ]
+
+jobs:
+  build-web:
+    name: Build Web App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Build React app
+        working-directory: frontend
+        run: npm run build
+      
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: frontend/dist
+
+  build-tizen:
+    name: Build Tizen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Install Tizen CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tizen-cli || echo "Tizen CLI installation skipped"
+      
+      - name: Build Tizen app
+        working-directory: frontend
+        run: npm run build:tizen || echo "Tizen build skipped (CLI not available)"
+      
+      - name: Upload Tizen build
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tizen-build
+          path: frontend/dist/tizen
+
+  build-webos:
+    name: Build WebOS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Install webOS CLI
+        run: |
+          npm install -g @webosose/ares-cli || echo "webOS CLI installation skipped"
+      
+      - name: Build WebOS app
+        working-directory: frontend
+        run: npm run build:webos || echo "WebOS build skipped (CLI not available)"
+      
+      - name: Upload WebOS build
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webos-build
+          path: frontend/dist/webos
+
+  build-brightsign:
+    name: Build BrightSign
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Build BrightSign player
+        working-directory: frontend
+        run: npm run build:brightsign
+      
+      - name: Upload BrightSign build
+        uses: actions/upload-artifact@v4
+        with:
+          name: brightsign-build
+          path: frontend/dist/brightsign
+
+  build-electron-windows:
+    name: Build Electron (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Build Electron Windows
+        working-directory: frontend
+        run: npm run build:electron:win
+      
+      - name: Upload Electron Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-windows-build
+          path: frontend/dist/electron/*.exe
+
+  build-electron-linux:
+    name: Build Electron (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
+      
+      - name: Build Electron Linux
+        working-directory: frontend
+        run: npm run build:electron:linux
+      
+      - name: Upload Electron Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-linux-build
+          path: frontend/dist/electron/*.AppImage
+
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Initialize Capacitor Android
+        working-directory: frontend
+        run: |
+          npm run capacitor:add:android || echo "Android project already exists"
+          npm run capacitor:sync
+      
+      - name: Build Android APK
+        working-directory: frontend
+        run: npm run build:android:apk
+      
+      - name: Upload Android build
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: frontend/android/app/build/outputs/apk/release/*.apk
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-web, build-tizen, build-webos, build-brightsign, build-electron-windows, build-electron-linux, build-android]
+    if: github.event_name == 'release'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      
+      - name: Create release archive
+        run: |
+          mkdir -p release
+          cp -r web-build release/web
+          cp -r tizen-build release/tizen 2>/dev/null || true
+          cp -r webos-build release/webos 2>/dev/null || true
+          cp -r brightsign-build release/brightsign
+          cp -r electron-windows-build release/electron-windows 2>/dev/null || true
+          cp -r electron-linux-build release/electron-linux 2>/dev/null || true
+          cp -r android-build release/android 2>/dev/null || true
+          tar -czf release-all-platforms.tar.gz release/
+      
+      - name: Upload release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-all-platforms
+          path: release-all-platforms.tar.gz

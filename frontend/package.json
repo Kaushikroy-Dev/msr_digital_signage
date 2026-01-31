@@ -1,0 +1,51 @@
+{
+    "name": "digital-signage-frontend",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "build:tizen": "bash scripts/build-tizen.sh",
+        "build:webos": "bash scripts/build-webos.sh",
+        "build:brightsign": "bash scripts/build-brightsign.sh",
+        "build:electron": "vite build && electron-builder",
+        "build:electron:win": "vite build && electron-builder --win",
+        "build:electron:linux": "vite build && electron-builder --linux",
+        "capacitor:init": "npx cap init",
+        "capacitor:add:android": "npx cap add android",
+        "capacitor:sync": "npx cap sync",
+        "capacitor:open:android": "npx cap open android",
+        "build:android": "vite build && npx cap sync && cd android && ./gradlew assembleRelease",
+        "build:android:apk": "vite build && npx cap sync && cd android && ./gradlew assembleRelease",
+        "build:all": "bash scripts/build-all.sh"
+    },
+    "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/sortable": "^10.0.0",
+        "@dnd-kit/utilities": "^3.2.2",
+        "@tanstack/react-query": "^5.17.9",
+        "axios": "^1.6.5",
+        "date-fns": "^3.0.6",
+        "lucide-react": "^0.303.0",
+        "qrcode": "^1.5.4",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-dropzone": "^14.2.3",
+        "react-router-dom": "^6.21.1",
+        "recharts": "^2.10.3",
+        "zustand": "^4.4.7"
+    },
+    "devDependencies": {
+        "@capacitor/android": "^8.0.2",
+        "@capacitor/cli": "^8.0.2",
+        "@capacitor/core": "^8.0.2",
+        "@types/react": "^18.2.47",
+        "@types/react-dom": "^18.2.18",
+        "@vitejs/plugin-react": "^4.2.1",
+        "electron": "^28.0.0",
+        "electron-builder": "^24.9.1",
+        "electron-updater": "^6.1.7",
+        "vite": "^5.0.11"
+    }
+}

@@ -1,0 +1,71 @@
+appId: com.digitalsignage.player
+productName: Digital Signage Player
+copyright: Copyright © 2026 Digital Signage
+
+directories:
+  output: dist/electron
+  buildResources: build
+
+files:
+  - "dist/**/*"
+  - "electron/**/*"
+  - "package.json"
+  - "!node_modules/**/*"
+  - "!src/**/*"
+  - "!*.md"
+  - "!.git/**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: build/icon.ico
+  publisherName: Digital Signage
+  requestedExecutionLevel: requireAdministrator
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Digital Signage Player
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+
+linux:
+  target:
+    - AppImage
+    - deb
+    - rpm
+  category: Utility
+  icon: build/icon.png
+  desktop:
+    Name: Digital Signage Player
+    Comment: Digital Signage Cloud Platform Player
+    Categories: Utility;Video;
+    StartupNotify: false
+    Terminal: false
+    Type: Application
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.utilities
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+publish:
+  provider: generic
+  url: https://updates.digitalsignage.com
+
+autoUpdater:
+  provider: generic
+  url: https://updates.digitalsignage.com

@@ -1,0 +1,59 @@
+.widget-config-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.widget-config-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+}
+
+.widget-config-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.widget-type-badge {
+    font-size: 11px;
+    padding: 4px 8px;
+    background: var(--primary);
+    color: white;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.widget-config-form {
+    padding: 0 12px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.widget-config-form .form-group {
+    margin-bottom: 16px;
+}
+
+.widget-config-form label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.widget-config-form input[type="checkbox"] {
+    width: auto;
+    margin-right: 8px;
+}
+
+.widget-config-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
