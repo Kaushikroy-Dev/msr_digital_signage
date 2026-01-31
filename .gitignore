@@ -13,3 +13,6 @@ yarn-error.log*
 *.swo
 coverage/
 .nyc_output/
+
+# Uploaded media files (too large for git)
+services/content-service/uploads/
