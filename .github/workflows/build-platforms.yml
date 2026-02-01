@@ -189,7 +189,13 @@ jobs:
           node-version: '22'
       
       - name: Verify Node version
-        run: node -v
+        run: |
+          echo "Node.js version: $(node -v)"
+          echo "NPM version: $(npm -v)"
+          if ! node -v | grep -q "v22"; then
+            echo "ERROR: Node.js version is not 22!"
+            exit 1
+          fi
       
       - name: Install dependencies
         working-directory: frontend
