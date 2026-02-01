@@ -9,7 +9,6 @@ import './PlaylistPreview.css';
 export default function PlaylistPreview({ playlistId, onClose }) {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [showPlayer, setShowPlayer] = useState(false);
 
     // Fetch playlist details
     const { data: playlistData, isLoading } = useQuery({
@@ -33,43 +32,33 @@ export default function PlaylistPreview({ playlistId, onClose }) {
         enabled: !!playlistId
     });
 
-    useEffect(() => {
-        if (isPlaying && playlistData?.items?.length > 0) {
-            setShowPlayer(true);
-        } else if (!isPlaying) {
-            setShowPlayer(false);
-        }
-    }, [isPlaying, playlistData]);
-
     // Auto-advance when playing (only if MediaPlayer doesn't handle it)
     useEffect(() => {
-        if (!isPlaying || !playlistData?.items?.length || showPlayer) return;
+        if (!isPlaying || !playlistData?.items?.length) return;
 
         const currentItem = playlistData.items[currentIndex];
         if (!currentItem) return;
 
-        // Only auto-advance for static previews, not when MediaPlayer is active
-        const duration = currentItem.duration_ms || (currentItem.duration_seconds * 1000) || 10000;
-        const timer = setTimeout(() => {
-            if (isPlaying && !showPlayer) {
+        // Auto-advance for static content (images). Videos and templates handle their own onComplete.
+        if (currentItem.content_type === 'media' && currentItem.file_type !== 'video') {
+            const duration = currentItem.duration_ms || (currentItem.duration_seconds * 1000) || 10000;
+            const timer = setTimeout(() => {
                 const nextIndex = (currentIndex + 1) % playlistData.items.length;
                 setCurrentIndex(nextIndex);
-            }
-        }, duration);
+            }, duration);
 
-        return () => clearTimeout(timer);
-    }, [isPlaying, currentIndex, playlistData, showPlayer]);
+            return () => clearTimeout(timer);
+        }
+    }, [isPlaying, currentIndex, playlistData]);
 
     const handlePlay = () => {
         if (playlistData?.items?.length > 0) {
             setIsPlaying(true);
-            setCurrentIndex(0);
         }
     };
 
     const handlePause = () => {
         setIsPlaying(false);
-        setShowPlayer(false);
     };
 
     const handleRestart = () => {
@@ -97,18 +86,9 @@ export default function PlaylistPreview({ playlistId, onClose }) {
         if (playlistData?.items?.length > 0) {
             const nextIndex = (currentIndex + 1) % playlistData.items.length;
             setCurrentIndex(nextIndex);
-            if (nextIndex === 0 && playlistData.items.length > 1) {
-                // Loop back to start
-                setIsPlaying(false);
-                setShowPlayer(false);
-            }
         }
     };
 
-    const handleClosePlayer = () => {
-        setShowPlayer(false);
-        setIsPlaying(false);
-    };
 
     if (isLoading || !playlistData) {
         return (
@@ -122,6 +102,13 @@ export default function PlaylistPreview({ playlistId, onClose }) {
 
     const { playlist, items } = playlistData;
     const currentItem = items && items.length > 0 ? items[currentIndex] : null;
+
+    // Scale calculation for TV frame
+    const renderWidth = 1920;
+    const renderHeight = 1080;
+    const maxWidth = 800;
+    const maxHeight = 450;
+    const scaleFactor = Math.min(maxWidth / renderWidth, maxHeight / renderHeight);
 
     // Prepare media object for MediaPlayer
     const currentMedia = currentItem && currentItem.content_type === 'media' ? {
@@ -143,151 +130,148 @@ export default function PlaylistPreview({ playlistId, onClose }) {
         background_image_id: currentItem.template?.background_image_id
     } : null;
 
-    return (
-        <>
+    if (isLoading || !playlistData) {
+        return (
             <div className="playlist-preview-overlay">
-                <div className="playlist-preview-container">
-                    <div className="preview-header">
-                        <div>
-                            <h2>{playlist?.name}</h2>
-                            <p>{items.length} items • {playlist?.transition_effect} transition</p>
-                        </div>
-                        <button onClick={onClose} className="close-btn">
-                            <X size={24} />
-                        </button>
-                    </div>
+                <div className="loading-wrapper">
+                    <div className="loading-spinner"></div>
+                    <p>Loading playlist details...</p>
+                </div>
+            </div>
+        );
+    }
 
-                    <div className="preview-content">
-                        <div className="preview-display">
-                            {currentItem ? (
-                                <div className="current-item-preview">
-                                    {currentItem.content_type === 'template' ? (
-                                        <div className="template-preview">
-                                            <div className="template-placeholder">
-                                                <Layout size={48} />
-                                                <p>Template: {currentItem.content_name || 'Template'}</p>
+    return (
+        <div className="playlist-preview-overlay">
+            <div className="playlist-preview-container">
+                <div className="preview-header">
+                    <div className="header-info">
+                        <h2>{playlist?.name}</h2>
+                        <p>
+                            <Layout size={14} /> {items.length} items
+                            <span style={{ opacity: 0.3 }}>|</span>
+                            <RotateCcw size={14} /> {playlist?.transition_effect} transition
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="close-btn" title="Close Preview">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="preview-layout">
+                    <div className="preview-main">
+                        <div className="tv-frame-container">
+                            <div className="tv-frame">
+                                <div className="tv-screen" style={{ width: renderWidth * scaleFactor, height: renderHeight * scaleFactor }}>
+                                    <div className="screen-reflection"></div>
+                                    <div className="scaler-wrapper" style={{ transform: `scale(${scaleFactor})` }}>
+                                        {currentItem ? (
+                                            currentItem.content_type === 'template' && currentTemplate ? (
+                                                <TemplateRenderer
+                                                    template={currentTemplate}
+                                                    duration={(currentItem.duration_ms || (currentItem.duration_seconds * 1000) || 10000) / 1000}
+                                                    onComplete={isPlaying ? handleMediaComplete : null}
+                                                    apiUrl={import.meta.env.VITE_API_URL || 'http://localhost:3000'}
+                                                />
+                                            ) : currentItem.file_type === 'video' ? (
+                                                <video
+                                                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${currentItem.url}`}
+                                                    autoPlay={isPlaying}
+                                                    loop={!isPlaying}
+                                                    muted
+                                                    onEnded={isPlaying ? handleMediaComplete : null}
+                                                    style={{ width: renderWidth, height: renderHeight, objectFit: 'contain' }}
+                                                />
+                                            ) : (
+                                                <img
+                                                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${currentItem.url || currentItem.thumbnail_url}`}
+                                                    alt={currentItem.content_name}
+                                                    style={{ width: renderWidth, height: renderHeight, objectFit: 'contain' }}
+                                                />
+                                            )
+                                        ) : (
+                                            <div className="preview-placeholder">
+                                                <Video size={64} />
+                                                <p>No content in this playlist segment</p>
                                             </div>
-                                        </div>
-                                    ) : currentItem.file_type === 'video' ? (
-                                        <div className="video-preview">
-                                            <Video size={48} />
-                                            <p>Video: {currentItem.content_name || 'Video'}</p>
-                                        </div>
-                                    ) : (
-                                        <img
-                                            src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${currentItem.url || currentItem.thumbnail_url || ''}`}
-                                            alt={currentItem.content_name || 'Media'}
-                                            className="preview-image"
-                                            onError={(e) => {
-                                                e.target.style.display = 'none';
-                                                e.target.parentElement.innerHTML = '<div class="no-preview">Preview not available</div>';
-                                            }}
-                                        />
-                                    )}
-                                    <div className="item-info">
-                                        <h3>{currentItem.content_name || `Item ${currentIndex + 1}`}</h3>
-                                        <p>Duration: {(currentItem.duration_ms || (currentItem.duration_seconds * 1000) || 10000) / 1000}s</p>
-                                        <p className="content-type">{currentItem.content_type === 'template' ? 'Template' : currentItem.file_type || 'Media'}</p>
+                                        )}
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="no-items">
-                                    <p>No items in playlist</p>
-                                </div>
-                            )}
+                            </div>
                         </div>
 
-                        <div className="preview-controls">
+                        <div className="main-controls">
                             <button onClick={handlePrevious} className="control-btn" disabled={!items.length}>
                                 <SkipBack size={20} />
                             </button>
 
-                            {isPlaying ? (
-                                <button onClick={handlePause} className="control-btn primary">
-                                    <Pause size={24} />
-                                </button>
-                            ) : (
-                                <button onClick={handlePlay} className="control-btn primary" disabled={!items.length}>
-                                    <Play size={24} />
-                                </button>
-                            )}
+                            <button
+                                onClick={isPlaying ? handlePause : handlePlay}
+                                className="control-btn play-pause"
+                                disabled={!items.length}
+                            >
+                                {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" />}
+                            </button>
 
                             <button onClick={handleNext} className="control-btn" disabled={!items.length}>
                                 <SkipForward size={20} />
                             </button>
 
-                            <button onClick={handleRestart} className="control-btn" disabled={!items.length}>
-                                <RotateCcw size={20} />
-                            </button>
-
-                            <div className="progress-indicator">
+                            <div className="progress-info">
                                 {currentIndex + 1} / {items.length}
                             </div>
-                        </div>
 
-                        <div className="items-list">
-                            <h3>Playlist Items</h3>
-                            <div className="items-grid">
-                                {items.map((item, index) => (
-                                    <div
-                                        key={item.id}
-                                        className={`item-card ${index === currentIndex ? 'active' : ''}`}
-                                        onClick={() => setCurrentIndex(index)}
-                                    >
-                                        <div className="item-number">{index + 1}</div>
-                                        <div className="item-details">
-                                            <p className="item-name">{item.content_name || `Item ${index + 1}`}</p>
-                                            <p className="item-duration">{(item.duration_ms || (item.duration_seconds * 1000) || 10000) / 1000}s</p>
-                                        </div>
+                            <button onClick={handleRestart} className="control-btn" title="Restart Playlist">
+                                <RotateCcw size={18} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="preview-sidebar">
+                        <div className="sidebar-title">
+                            <h3>Queue</h3>
+                            <span className="item-count">{items.length} Files</span>
+                        </div>
+                        <div className="playlist-items-scroll">
+                            {items.map((item, index) => (
+                                <div
+                                    key={item.id}
+                                    className={`item-card ${index === currentIndex ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setCurrentIndex(index);
+                                        // If user manually clicks, maybe pause auto-play or just jump?
+                                        // Let's just jump and keep playing state as is
+                                    }}
+                                >
+                                    <div className="item-thumb">
+                                        {item.content_type === 'template' ? (
+                                            <Layout size={20} />
+                                        ) : item.file_type === 'video' ? (
+                                            <Video size={20} />
+                                        ) : (
+                                            <img
+                                                src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${item.thumbnail_url || item.url}`}
+                                                alt=""
+                                            />
+                                        )}
                                     </div>
-                                ))}
-                            </div>
+                                    <div className="item-meta">
+                                        <p className="item-meta-name">{item.content_name || `Untitled Item`}</p>
+                                        <p className="item-meta-sub">
+                                            <span>{(item.duration_ms || (item.duration_seconds * 1000) || 10000) / 1000}s</span>
+                                            <span style={{ opacity: 0.3 }}>•</span>
+                                            <span>{item.content_type}</span>
+                                        </p>
+                                    </div>
+                                    <div className="item-status">
+                                        <Play size={14} fill="currentColor" />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
             </div>
-
-            {showPlayer && currentItem && (
-                <>
-                    {currentItem.content_type === 'template' && currentTemplate ? (
-                        <div className="playlist-preview-overlay" style={{ zIndex: 9999 }}>
-                            <TemplateRenderer
-                                template={currentTemplate}
-                                duration={(currentItem.duration_ms || (currentItem.duration_seconds * 1000) || 10000) / 1000}
-                                onComplete={handleMediaComplete}
-                                apiUrl={import.meta.env.VITE_API_URL || 'http://localhost:3000'}
-                            />
-                            <button 
-                                onClick={handleClosePlayer}
-                                className="close-player-btn"
-                                style={{
-                                    position: 'absolute',
-                                    top: '20px',
-                                    right: '20px',
-                                    background: 'rgba(0, 0, 0, 0.7)',
-                                    border: 'none',
-                                    color: 'white',
-                                    padding: '10px',
-                                    borderRadius: '50%',
-                                    cursor: 'pointer',
-                                    zIndex: 10000
-                                }}
-                            >
-                                <X size={24} />
-                            </button>
-                        </div>
-                    ) : currentMedia ? (
-                        <MediaPlayer
-                            media={currentMedia}
-                            onClose={handleClosePlayer}
-                            autoPlay={true}
-                            duration={(currentItem.duration_ms || (currentItem.duration_seconds * 1000) || 10000) / 1000}
-                            transitionEffect={playlist?.transition_effect || 'fade'}
-                            onComplete={handleMediaComplete}
-                        />
-                    ) : null}
-                </>
-            )}
-        </>
+        </div>
     );
 }

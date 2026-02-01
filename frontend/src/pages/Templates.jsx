@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { DndContext, useDroppable, DragOverlay, closestCenter } from '@dnd-kit/core';
 import { useSensors, useSensor, PointerSensor, MouseSensor } from '@dnd-kit/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Save, Layout as LayoutIcon, Grid, Type, Image as ImageIcon, Clock, Cloud, QrCode, Globe, Undo, Redo, Eye, Maximize2, Timer, Rss, LayoutGrid, Shapes, Twitter, BarChart3, Code, Copy, History, RotateCcw, Share2, Download, Upload, Variable, RefreshCw, BarChart2, Play, ArrowLeft } from 'lucide-react';
+import { Plus, Save, Layout as LayoutIcon, Grid, Type, Image as ImageIcon, Clock, Cloud, QrCode, Globe, Undo, Redo, Eye, Maximize2, Timer, Rss, LayoutGrid, Shapes, Twitter, BarChart3, Code, Copy, History, RotateCcw, Share2, Download, Upload, Variable, RefreshCw, BarChart2, Play, ArrowLeft, Search, Edit2, Trash2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { snapToGrid, getAlignmentGuides, applySmartSnap } from '../utils/canvasUtils';
 import * as alignmentUtils from '../utils/alignmentUtils';
@@ -1063,6 +1063,20 @@ export default function TemplateDesigner() {
             return;
         }
 
+        // Validate property selection for super_admin
+        if (user?.role === 'super_admin' && !selectedPropertyId) {
+            console.error('Validation failed: Property ID is required for super_admin');
+            alert('Please select a property for this template');
+            return;
+        }
+
+        // Validate zone selection for property_admin and content_editor
+        if ((user?.role === 'property_admin' || user?.role === 'content_editor') && !selectedZoneId) {
+            console.error('Validation failed: Zone ID is required');
+            alert('Please select a zone for this template');
+            return;
+        }
+
         // Validate template before saving
         const templateForValidation = {
             name: templateName,
@@ -1100,15 +1114,9 @@ export default function TemplateDesigner() {
                 return;
             }
         } else if (validation.warnings.length > 0) {
-            const warningMessages = validation.warnings.map(w => w.message).join('\n');
-            console.log('Showing confirmation dialog for validation warnings');
-            const userConfirmed = confirm('Template validation warnings:\n\n' + warningMessages + '\n\nDo you want to save anyway?');
-            console.log('User confirmed:', userConfirmed);
-
-            if (!userConfirmed) {
-                console.log('User cancelled save due to validation warnings');
-                return;
-            }
+            // If valid but has warnings, just log them and proceed
+            console.log('Template has warnings but is valid. Proceeding with save.', validation.warnings);
+            // Optionally we could show a non-blocking toast here if a toast system existed
         }
 
         const templateData = {
@@ -1236,10 +1244,10 @@ export default function TemplateDesigner() {
     const selectedZone = zones.find(z => selectedZoneIds.includes(z.id));
 
     return (
-        <div className={`template-designer ${isCreating || isEditing ? 'fullscreen-designer' : ''}`}>
-            <div className="designer-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    {(isCreating || isEditing) && (
+        <div className={isCreating || isEditing ? 'template-designer fullscreen-designer' : 'templates-container'}>
+            {(isCreating || isEditing) && (
+                <div className="designer-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <button
                             className="btn btn-outline back-button"
                             onClick={() => {
@@ -1254,168 +1262,178 @@ export default function TemplateDesigner() {
                             <ArrowLeft size={18} />
                             Back
                         </button>
-                    )}
-                    <h1>Template Designer</h1>
-                </div>
-                <div className="designer-actions">
-                    {isCreating || isEditing ? (
-                        <>
+                        <h1>Template Designer</h1>
+                    </div>
+                    <div className="designer-actions">
+                        <button
+                            className="btn btn-outline"
+                            onClick={() => undo()}
+                            disabled={!canUndo}
+                            title="Undo (Ctrl+Z)"
+                        >
+                            <Undo size={18} />
+                        </button>
+                        <button
+                            className="btn btn-outline"
+                            onClick={() => redo()}
+                            disabled={!canRedo}
+                            title="Redo (Ctrl+Y)"
+                        >
+                            <Redo size={18} />
+                        </button>
+                        <button
+                            className="btn btn-outline"
+                            onClick={() => setShowTester(true)}
+                            title="Test Template"
+                        >
+                            <Eye size={18} />
+                            Test
+                        </button>
+                        <button
+                            className="btn btn-outline"
+                            onClick={() => setShowLivePreview(true)}
+                            title="Preview Template (F11)"
+                        >
+                            <Maximize2 size={18} />
+                            Preview
+                        </button>
+                        {isEditing && (
                             <button
                                 className="btn btn-outline"
-                                onClick={() => undo()}
-                                disabled={!canUndo}
-                                title="Undo (Ctrl+Z)"
+                                onClick={() => {
+                                    setSaveAsName(selectedTemplate?.name || '');
+                                    setShowSaveAs(true);
+                                }}
+                                title="Save As New Template"
                             >
-                                <Undo size={18} />
+                                <Copy size={18} />
+                                Save As
                             </button>
-                            <button
-                                className="btn btn-outline"
-                                onClick={() => redo()}
-                                disabled={!canRedo}
-                                title="Redo (Ctrl+Y)"
-                            >
-                                <Redo size={18} />
-                            </button>
-                            <button
-                                className="btn btn-outline"
-                                onClick={() => setShowTester(true)}
-                                title="Test Template"
-                            >
-                                <Eye size={18} />
-                                Test
-                            </button>
-                            <button
-                                className="btn btn-outline"
-                                onClick={() => setShowLivePreview(true)}
-                                title="Preview Template (F11)"
-                            >
-                                <Maximize2 size={18} />
-                                Preview
-                            </button>
-                            {isEditing && (
+                        )}
+                        <button className="btn btn-primary" onClick={handleSaveTemplate}>
+                            <Save size={18} />
+                            {isEditing ? 'Update' : 'Save'} Template
+                        </button>
+                        {isEditing && selectedTemplate && (
+                            <>
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={handleGenerateThumbnail}
+                                    title="Generate Thumbnail"
+                                    disabled={generateThumbnailMutation.isLoading}
+                                >
+                                    <RefreshCw size={18} />
+                                    {generateThumbnailMutation.isLoading ? 'Generating...' : 'Thumbnail'}
+                                </button>
                                 <button
                                     className="btn btn-outline"
                                     onClick={() => {
-                                        setSaveAsName(selectedTemplate?.name || '');
-                                        setShowSaveAs(true);
+                                        setVersionHistoryTemplate(selectedTemplate);
+                                        setShowVersionHistory(true);
                                     }}
-                                    title="Save As New Template"
+                                    title="View Version History"
                                 >
-                                    <Copy size={18} />
-                                    Save As
+                                    <History size={18} />
+                                    Versions
                                 </button>
-                            )}
-                            <button className="btn btn-primary" onClick={handleSaveTemplate}>
-                                <Save size={18} />
-                                {isEditing ? 'Update' : 'Save'} Template
-                            </button>
-                            {isEditing && selectedTemplate && (
-                                <>
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={() => {
+                                        setAnalyticsTemplate(selectedTemplate);
+                                        setShowAnalytics(true);
+                                    }}
+                                    title="View Analytics"
+                                >
+                                    <BarChart2 size={18} />
+                                    Analytics
+                                </button>
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={() => setShowQuickActions(true)}
+                                    title="Quick Actions"
+                                >
+                                    <Play size={18} />
+                                    Add to Playlist
+                                </button>
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={() => setShowVariableEditor(true)}
+                                    title="Manage Variables"
+                                >
+                                    <Variable size={18} />
+                                    Variables
+                                </button>
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={() => setShowShareModal(true)}
+                                    title="Share Template with Users"
+                                >
+                                    <Share2 size={18} />
+                                    Share
+                                </button>
+                                {user?.role === 'super_admin' && (
                                     <button
                                         className="btn btn-outline"
-                                        onClick={handleGenerateThumbnail}
-                                        title="Generate Thumbnail"
-                                        disabled={generateThumbnailMutation.isLoading}
-                                    >
-                                        <RefreshCw size={18} />
-                                        {generateThumbnailMutation.isLoading ? 'Generating...' : 'Thumbnail'}
-                                    </button>
-                                    <button
-                                        className="btn btn-outline"
-                                        onClick={() => {
-                                            setVersionHistoryTemplate(selectedTemplate);
-                                            setShowVersionHistory(true);
-                                        }}
-                                        title="View Version History"
-                                    >
-                                        <History size={18} />
-                                        Versions
-                                    </button>
-                                    <button
-                                        className="btn btn-outline"
-                                        onClick={() => {
-                                            setAnalyticsTemplate(selectedTemplate);
-                                            setShowAnalytics(true);
-                                        }}
-                                        title="View Analytics"
-                                    >
-                                        <BarChart2 size={18} />
-                                        Analytics
-                                    </button>
-                                    <button
-                                        className="btn btn-outline"
-                                        onClick={() => setShowQuickActions(true)}
-                                        title="Quick Actions"
-                                    >
-                                        <Play size={18} />
-                                        Add to Playlist
-                                    </button>
-                                    <button
-                                        className="btn btn-outline"
-                                        onClick={() => setShowVariableEditor(true)}
-                                        title="Manage Variables"
-                                    >
-                                        <Variable size={18} />
-                                        Variables
-                                    </button>
-                                    <button
-                                        className="btn btn-outline"
-                                        onClick={() => setShowShareModal(true)}
-                                        title="Share Template with Users"
+                                        onClick={() => setShowPropertyShareModal(true)}
+                                        title="Share Template with Properties"
                                     >
                                         <Share2 size={18} />
-                                        Share
+                                        Share Property
                                     </button>
-                                    {user?.role === 'super_admin' && (
-                                        <button
-                                            className="btn btn-outline"
-                                            onClick={() => setShowPropertyShareModal(true)}
-                                            title="Share Template with Properties"
-                                        >
-                                            <Share2 size={18} />
-                                            Share Property
-                                        </button>
-                                    )}
-                                    <button
-                                        className="btn btn-outline"
-                                        onClick={handleExportTemplate}
-                                        title="Export Template"
-                                    >
-                                        <Download size={18} />
-                                        Export
-                                    </button>
-                                    <button
-                                        className="btn btn-outline"
-                                        onClick={() => document.getElementById('import-template-input')?.click()}
-                                        title="Import Template"
-                                    >
-                                        <Upload size={18} />
-                                        Import
-                                    </button>
-                                </>
-                            )}
-                            <button className="btn btn-outline" onClick={() => {
-                                setIsCreating(false);
-                                setIsEditing(false);
-                                setSidebarCollapsed(false);
-                                resetTemplate();
-                            }}>
-                                Cancel
-                            </button>
-                        </>
-                    ) : (
-                        <button className="btn btn-primary" onClick={handleCreateNew}>
-                            <Plus size={18} />
-                            New Template
+                                )}
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={handleExportTemplate}
+                                    title="Export Template"
+                                >
+                                    <Download size={18} />
+                                    Export
+                                </button>
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={() => document.getElementById('import-template-input')?.click()}
+                                    title="Import Template"
+                                >
+                                    <Upload size={18} />
+                                    Import
+                                </button>
+                            </>
+                        )}
+                        <button className="btn btn-outline" onClick={() => {
+                            setIsCreating(false);
+                            setIsEditing(false);
+                            setSidebarCollapsed(false);
+                            resetTemplate();
+                        }}>
+                            Cancel
                         </button>
-                    )}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {!isCreating && !isEditing ? (
-                <>
+                <div className="templates-listing">
+                    <div className="page-header">
+                        <div className="header-title">
+                            <h1>Template Designer</h1>
+                            <p className="subtitle">{templates?.length || 0} templates available • Create dynamic multi-zone layouts</p>
+                        </div>
+                        <div className="header-actions">
+                            <button className="btn-premium" onClick={handleCreateNew}>
+                                <Plus size={20} />
+                                New Template
+                            </button>
+                        </div>
+                    </div>
+
                     {user?.role === 'super_admin' && (
-                        <div style={{ marginBottom: '20px' }}>
+                        <div className="filter-card organization-filter">
+                            <div className="filter-header">
+                                <div className="filter-title">
+                                    <Cloud size={18} className="icon-primary" />
+                                    <span>Organization Scope</span>
+                                </div>
+                            </div>
                             <PropertyZoneSelector
                                 selectedPropertyId={selectedPropertyId}
                                 selectedZoneId={selectedZoneId}
@@ -1425,139 +1443,147 @@ export default function TemplateDesigner() {
                             />
                         </div>
                     )}
-                    {/* Filters and Search */}
-                    <div className="templates-filters">
-                        <div className="filter-group">
-                            <label>Category</label>
-                            <select
-                                className="input"
-                                value={selectedCategory}
-                                onChange={(e) => setSelectedCategory(e.target.value)}
-                            >
-                                <option value="all">All Categories</option>
-                                <option value="retail">Retail</option>
-                                <option value="corporate">Corporate</option>
-                                <option value="education">Education</option>
-                                <option value="events">Events</option>
-                                <option value="custom">Custom</option>
-                            </select>
+
+                    <div className="filter-card main-filters">
+                        <div className="filters-grid">
+                            <div className="filter-item">
+                                <label>Category</label>
+                                <div className="select-wrapper">
+                                    <select
+                                        className="premium-select"
+                                        value={selectedCategory}
+                                        onChange={(e) => setSelectedCategory(e.target.value)}
+                                    >
+                                        <option value="all">All Categories</option>
+                                        <option value="retail">Retail</option>
+                                        <option value="corporate">Corporate</option>
+                                        <option value="education">Education</option>
+                                        <option value="events">Events</option>
+                                        <option value="custom">Custom</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="filter-item search-group">
+                                <label>Search</label>
+                                <div className="premium-search">
+                                    <Search size={18} className="search-icon" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search templates..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="filter-item">
+                                <label>Sort By</label>
+                                <div className="select-wrapper">
+                                    <select
+                                        className="premium-select"
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}
+                                    >
+                                        <option value="created_at">Date Created</option>
+                                        <option value="updated_at">Last Updated</option>
+                                        <option value="name">Name</option>
+                                        <option value="category">Category</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="filter-item">
+                                <label>Order</label>
+                                <div className="select-wrapper">
+                                    <select
+                                        className="premium-select"
+                                        value={sortOrder}
+                                        onChange={(e) => setSortOrder(e.target.value)}
+                                    >
+                                        <option value="DESC">Descending</option>
+                                        <option value="ASC">Ascending</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
+
                         {allTags.length > 0 && (
-                            <div className="filter-group">
-                                <label>Tags</label>
-                                <div className="tags-filter">
+                            <div className="tags-container">
+                                <span className="tags-label">Quick Tags:</span>
+                                <div className="tags-list">
                                     {allTags.map(tag => (
-                                        <label key={tag} className="tag-checkbox">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedTags.includes(tag)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setSelectedTags([...selectedTags, tag]);
-                                                    } else {
-                                                        setSelectedTags(selectedTags.filter(t => t !== tag));
-                                                    }
-                                                }}
-                                            />
+                                        <button
+                                            key={tag}
+                                            className={`tag-toggle ${selectedTags.includes(tag) ? 'active' : ''}`}
+                                            onClick={() => {
+                                                if (selectedTags.includes(tag)) {
+                                                    setSelectedTags(selectedTags.filter(t => t !== tag));
+                                                } else {
+                                                    setSelectedTags([...selectedTags, tag]);
+                                                }
+                                            }}
+                                        >
                                             {tag}
-                                        </label>
+                                        </button>
                                     ))}
                                 </div>
                             </div>
                         )}
-                        <div className="filter-group">
-                            <label>Search</label>
-                            <input
-                                type="text"
-                                className="input"
-                                placeholder="Search templates..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                        <div className="filter-group">
-                            <label>Sort By</label>
-                            <select
-                                className="input"
-                                value={sortBy}
-                                onChange={(e) => setSortBy(e.target.value)}
-                            >
-                                <option value="created_at">Date Created</option>
-                                <option value="updated_at">Last Updated</option>
-                                <option value="name">Name</option>
-                                <option value="category">Category</option>
-                            </select>
-                        </div>
-                        <div className="filter-group">
-                            <label>Order</label>
-                            <select
-                                className="input"
-                                value={sortOrder}
-                                onChange={(e) => setSortOrder(e.target.value)}
-                            >
-                                <option value="DESC">Descending</option>
-                                <option value="ASC">Ascending</option>
-                            </select>
-                        </div>
                     </div>
 
                     <div className="templates-grid">
-                        <div className="template-card new-template" onClick={handleCreateNew}>
-                            <Plus size={48} />
+                        <div className="template-card create-card" onClick={handleCreateNew}>
+                            <div className="create-icon">
+                                <Plus size={48} />
+                            </div>
                             <h3>Create New Template</h3>
+                            <p>Build from a blank canvas</p>
                         </div>
+
                         {templates?.map((template) => (
                             <div key={template.id} className="template-card">
-                                <div className="template-preview">
+                                <div className="template-card-preview">
                                     {template.preview_image_path ? (
                                         <img src={template.preview_image_path} alt={template.name} />
                                     ) : (
-                                        <LayoutIcon size={32} />
+                                        <div className="preview-placeholder">
+                                            <LayoutGrid size={48} opacity={0.3} />
+                                        </div>
+                                    )}
+                                    <div className="card-overlay">
+                                        <button className="overlay-btn edit" onClick={() => handleEditTemplate(template)}>
+                                            <Edit2 size={18} />
+                                        </button>
+                                        <button className="overlay-btn copy" onClick={(e) => {
+                                            e.stopPropagation();
+                                            duplicateMutation.mutate(template.id);
+                                        }}>
+                                            <Copy size={18} />
+                                        </button>
+                                        <button className="overlay-btn delete" onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (confirm(`Delete "${template.name}"?`)) deleteMutation.mutate(template.id);
+                                        }}>
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                    {template.category && (
+                                        <div className="premium-badge">{template.category}</div>
                                     )}
                                 </div>
-                                <h3>{template.name}</h3>
-                                <p>{template.width}x{template.height}</p>
-                                {template.category && (
-                                    <span className="template-category">{template.category}</span>
-                                )}
-                                {template.tags && template.tags.length > 0 && (
-                                    <div className="template-tags">
-                                        {template.tags.slice(0, 3).map(tag => (
-                                            <span key={tag} className="tag-badge">{tag}</span>
-                                        ))}
-                                        {template.tags.length > 3 && (
-                                            <span className="tag-badge">+{template.tags.length - 3}</span>
-                                        )}
+                                <div className="template-card-content">
+                                    <h3 className="template-title">{template.name}</h3>
+                                    <div className="template-meta">
+                                        <span className="res">{template.width}x{template.height}</span>
+                                        <span className="dot">•</span>
+                                        <span className="date">{new Date(template.updated_at).toLocaleDateString()}</span>
                                     </div>
-                                )}
-                                <div className="template-actions">
-                                    <button className="btn btn-sm" onClick={() => handleEditTemplate(template)}>
-                                        Edit
-                                    </button>
-                                    <button
-                                        className="btn btn-sm btn-outline"
-                                        onClick={() => duplicateMutation.mutate(template.id)}
-                                        title="Duplicate Template"
-                                    >
-                                        <Copy size={14} />
-                                    </button>
-                                    <button
-                                        className="btn btn-sm btn-danger"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (window.confirm(`Are you sure you want to delete "${template.name}"? This action cannot be undone.`)) {
-                                                deleteMutation.mutate(template.id);
-                                            }
-                                        }}
-                                        disabled={deleteMutation.isPending}
-                                    >
-                                        {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-                                    </button>
                                 </div>
                             </div>
                         ))}
                     </div>
-                </>
+                </div>
             ) : (
                 <DndContext
                     sensors={sensors}

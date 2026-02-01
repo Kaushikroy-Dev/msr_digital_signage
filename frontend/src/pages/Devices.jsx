@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Monitor, Activity, Power, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { Monitor, Activity, Power, RotateCw, Trash2, Wifi, WifiOff, Plus, Grid, List, Search, Smartphone, Tablet, Globe } from 'lucide-react';
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import './Devices.css';
@@ -10,16 +10,21 @@ export default function Devices() {
     const queryClient = useQueryClient();
 
     // Fetch devices
-    const { data: devices } = useQuery({
+    const { data: devices, error: devicesError, isLoading } = useQuery({
         queryKey: ['devices', user?.tenantId],
         queryFn: async () => {
+            console.log('[Devices] Fetching devices for tenant:', user?.tenantId);
             const response = await api.get('/devices', {
                 params: { tenantId: user?.tenantId }
             });
+            console.log('[Devices] Received devices:', response.data.devices?.length || 0);
             return response.data.devices;
         },
         enabled: !!user?.tenantId,
-        refetchInterval: 30000 // Refresh every 30 seconds
+        refetchInterval: 30000, // Refresh every 30 seconds
+        onError: (error) => {
+            console.error('[Devices] Failed to fetch devices:', error);
+        }
     });
 
     // Send command mutation
@@ -33,12 +38,13 @@ export default function Devices() {
         },
         onSuccess: (data, variables) => {
             // Invalidate devices query to refresh status
-            queryClient.invalidateQueries(['devices']);
-            console.log(`Command ${variables.commandType} sent successfully`);
+            queryClient.invalidateQueries(['devices', user?.tenantId]);
+            console.log(`[Devices] Command ${variables.commandType} sent successfully to ${variables.deviceId}`);
         },
-        onError: (error) => {
-            console.error('Command error:', error);
-            alert(error.response?.data?.error || `Failed to send ${variables?.commandType || 'command'}`);
+        onError: (error, variables) => {
+            console.error('[Devices] Command error:', error);
+            const errorMsg = error.response?.data?.details || error.response?.data?.error || error.message;
+            alert(`Failed to send ${variables?.commandType || 'command'}: ${errorMsg}`);
         }
     });
 
@@ -57,6 +63,28 @@ export default function Devices() {
         }
     });
 
+    const [viewMode, setViewMode] = useState('grid');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [propertyFilter, setPropertyFilter] = useState('all');
+    const [platformFilter, setPlatformFilter] = useState('all');
+    const [groupBy, setGroupBy] = useState('none');
+
+    const [selectedDevices, setSelectedDevices] = useState([]);
+
+    const toggleSelection = (id) => {
+        setSelectedDevices(prev =>
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
+    const handleBulkDelete = () => {
+        if (window.confirm(`Delete ${selectedDevices.length} devices?`)) {
+            Promise.all(selectedDevices.map(id => deleteMutation.mutateAsync(id)))
+                .then(() => setSelectedDevices([]))
+                .catch(err => console.error('Bulk delete error:', err));
+        }
+    };
     const [isRegistering, setIsRegistering] = useState(false);
     const [regMode, setRegMode] = useState('pair'); // 'manual' or 'pair'
     const [propertyId, setPropertyId] = useState('');
@@ -69,14 +97,12 @@ export default function Devices() {
         orientation: 'landscape'
     });
 
-    // Handle pairing code input focus
+    // ... handleCodeChange, handleCodeKeyDown logic remains same ...
     const handleCodeChange = (index, value) => {
         if (value.length > 1) value = value.slice(-1);
         const newCode = [...pairingCode];
         newCode[index] = value.toUpperCase();
         setPairingCode(newCode);
-
-        // Auto focus next
         if (value && index < 7) {
             const nextInput = document.getElementById(`code-input-${index + 1}`);
             nextInput?.focus();
@@ -90,7 +116,7 @@ export default function Devices() {
         }
     };
 
-    // Fetch properties
+    // ... mutations and queries remain same ...
     const { data: properties } = useQuery({
         queryKey: ['properties', user?.tenantId],
         queryFn: async () => {
@@ -99,10 +125,9 @@ export default function Devices() {
             });
             return response.data.properties;
         },
-        enabled: isRegistering && !!user?.tenantId
+        enabled: !!user?.tenantId
     });
 
-    // Fetch zones
     const { data: zones } = useQuery({
         queryKey: ['zones', propertyId],
         queryFn: async () => {
@@ -114,57 +139,35 @@ export default function Devices() {
         enabled: isRegistering && !!propertyId
     });
 
-    // Register mutation
     const registerMutation = useMutation({
-        mutationFn: async (data) => {
-            const response = await api.post('/devices', data);
-            return response.data;
-        },
+        mutationFn: async (data) => api.post('/devices', data),
         onSuccess: () => {
             queryClient.invalidateQueries(['devices']);
             setIsRegistering(false);
-            setFormData({
-                name: '',
-                deviceCode: '',
-                zoneId: '',
-                platform: 'android',
-                orientation: 'landscape'
-            });
+            setFormData({ name: '', deviceCode: '', zoneId: '', platform: 'android', orientation: 'landscape' });
         }
     });
 
-    // Register mutation (Claim)
     const claimMutation = useMutation({
-        mutationFn: async (data) => {
-            const response = await api.post('/devices/pairing/claim', data);
-            return response.data;
-        },
+        mutationFn: async (data) => api.post('/devices/pairing/claim', data),
         onSuccess: () => {
             queryClient.invalidateQueries(['devices']);
             setIsRegistering(false);
             setPairingCode(['', '', '', '', '', '', '', '']);
             setFormData({ name: '', deviceCode: '', zoneId: '', platform: 'android', orientation: 'landscape' });
         },
-        onError: (err) => {
-            alert(err.response?.data?.error || 'Failed to claim code');
-        }
+        onError: (err) => alert(err.response?.data?.error || 'Failed to claim code')
     });
 
     const handleRegister = (e) => {
         e.preventDefault();
-
         if (regMode === 'pair') {
             const code = pairingCode.join('');
             if (code.length < 8 || !formData.name || !formData.zoneId) {
-                alert('Please fill in all fields and complete the pairing code');
+                alert('Please fill in all fields');
                 return;
             }
-            claimMutation.mutate({
-                code,
-                name: formData.name,
-                zoneId: formData.zoneId,
-                platform: formData.platform
-            });
+            claimMutation.mutate({ code, name: formData.name, zoneId: formData.zoneId, platform: formData.platform });
         } else {
             if (!formData.name || !formData.deviceCode || !formData.zoneId) {
                 alert('Please fill in all required fields');
@@ -174,298 +177,407 @@ export default function Devices() {
         }
     };
 
-    const handleCommand = (deviceId, commandType) => {
+    const handleCommand = (e, deviceId, commandType) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
         const confirmMsg = {
-            reboot: 'Are you sure you want to reboot this device?',
-            screen_off: 'Are you sure you want to turn the display OFF?',
-            screen_on: 'Are you sure you want to turn the display ON?',
-            clear_cache: 'Clear device cache and reload?'
+            reboot: 'Reboot this device?',
+            screen_off: 'Turn display OFF?',
+            screen_on: 'Turn display ON?',
+            clear_cache: 'Clear cache and reload?'
         };
-
-        if (confirm(confirmMsg[commandType] || `Run ${commandType}?`)) {
+        if (window.confirm(confirmMsg[commandType] || `Run ${commandType}?`)) {
             commandMutation.mutate({ deviceId, commandType });
         }
     };
 
     const handleDeleteDevice = (deviceId, name, e) => {
-        if (e) {
-            e.stopPropagation();
-            e.preventDefault();
-        }
-        console.log(`[DevicesUI] Deletion requested for ${name} (${deviceId})`);
-        // Using a non-blocking confirmation for better automation and UX
-        if (window.confirm(`CRITICAL: Are you sure you want to delete "${name}"? This cannot be undone.`)) {
-            console.log(`[DevicesUI] Confirmed deletion for ${deviceId}`);
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        if (window.confirm(`Delete "${name}"? This cannot be undone.`)) {
             deleteMutation.mutate(deviceId);
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'online': return '#10b981'; // Green
-            case 'offline': return '#6b7280'; // Gray
-            case 'error': return '#ef4444'; // Red
-            default: return '#f59e0b'; // Amber
-        }
+    // Filter Logic
+    const filteredDevices = devices?.filter(d => {
+        const matchesSearch = d.device_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            d.id.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesStatus = statusFilter === 'all' ||
+            (statusFilter === 'online' && d.status === 'online') ||
+            (statusFilter === 'offline' && d.status !== 'online') ||
+            (statusFilter === 'playing' && (d.is_playing || d.isPlaying));
+        const matchesProperty = propertyFilter === 'all' || d.property_id === propertyFilter;
+        const matchesPlatform = platformFilter === 'all' || d.platform?.toLowerCase() === platformFilter.toLowerCase();
+        return matchesSearch && matchesStatus && matchesProperty && matchesPlatform;
+    });
+
+    const getGroupedDevices = () => {
+        if (groupBy === 'none') return { 'All Devices': filteredDevices || [] };
+
+        const groups = {};
+        filteredDevices?.forEach(device => {
+            let key = 'Other';
+            if (groupBy === 'property') key = device.property_name || 'Unassigned Property';
+            if (groupBy === 'platform') key = device.platform || 'General';
+
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(device);
+        });
+        return groups;
+    };
+
+    const deviceGroups = getGroupedDevices();
+
+    const counts = {
+        total: devices?.length || 0,
+        online: devices?.filter(d => d.status === 'online').length || 0,
+        offline: devices?.filter(d => d.status !== 'online').length || 0,
+        playing: devices?.filter(d => d.is_playing || d.isPlaying).length || 0
     };
 
     return (
         <div className="devices-page">
             <div className="page-header">
                 <div className="header-title">
-                    <h1>Screens</h1>
-                    <div className="breadcrumb">Dashboard / Screens</div>
+                    <h1>Devices</h1>
+                    <div className="subtitle">{counts.total} devices • {counts.online} online • {counts.playing} playing</div>
                 </div>
                 <div className="header-actions">
-                    <div className="stats-pills">
-                        <div className="stat-pill">
-                            <span className="pill-dot" style={{ background: '#10b981' }}></span>
-                            <span className="pill-text"><b>{devices?.filter(d => d.status === 'online').length || 0}</b> Online</span>
+                    <button
+                        className="btn btn-outline btn-with-icon"
+                        style={{ padding: '0.75rem 1.25rem' }}
+                        onClick={() => {
+                            if (selectedDevices.length === filteredDevices?.length) {
+                                setSelectedDevices([]);
+                            } else {
+                                setSelectedDevices(filteredDevices?.map(d => d.id) || []);
+                            }
+                        }}
+                    >
+                        <div style={{
+                            border: '2px solid currentColor',
+                            width: 14,
+                            height: 14,
+                            borderRadius: 3,
+                            marginRight: 8,
+                            background: selectedDevices.length > 0 ? 'var(--primary)' : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '10px'
+                        }}>
+                            {selectedDevices.length === filteredDevices?.length ? '✓' : selectedDevices.length > 0 ? '-' : ''}
                         </div>
-                        <div className="stat-pill">
-                            <span className="pill-dot" style={{ background: '#6b7280' }}></span>
-                            <span className="pill-text"><b>{devices?.filter(d => d.status !== 'online').length || 0}</b> Offline</span>
-                        </div>
-                    </div>
-                    {user?.role !== 'zone_admin' && (
-                        <button className="btn btn-primary btn-with-icon" onClick={() => { setIsRegistering(true); setRegMode('pair'); }}>
-                            <Monitor size={18} />
-                            Add Screen
-                        </button>
-                    )}
+                        {selectedDevices.length === filteredDevices?.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                    <button className="btn btn-primary btn-with-icon" onClick={() => { setIsRegistering(true); setRegMode('pair'); }} style={{ padding: '0.75rem 1.5rem', background: 'linear-gradient(135deg, var(--primary), #2563eb)' }}>
+                        <Plus size={20} />
+                        Add Device
+                    </button>
                 </div>
             </div>
 
-            {isRegistering && (
-                <div className="modal-overlay">
-                    <div className="modal-content premium-modal">
-                        <div className="modal-header">
-                            <div>
-                                <h2>Register New Device</h2>
-                                <p>Onboard a new digital signage player</p>
-                            </div>
-                            <div className="tab-switcher">
-                                <button
-                                    className={`tab-btn ${regMode === 'pair' ? 'active' : ''}`}
-                                    onClick={() => setRegMode('pair')}
-                                >
-                                    Pair Code
-                                </button>
-                                <button
-                                    className={`tab-btn ${regMode === 'manual' ? 'active' : ''}`}
-                                    onClick={() => setRegMode('manual')}
-                                >
-                                    Manual
-                                </button>
-                            </div>
-                        </div>
+            <div className="stats-grid">
+                <div className="stat-card">
+                    <div className="stat-icon-wrapper primary"><Monitor size={24} /></div>
+                    <div className="stat-info">
+                        <span className="stat-value">{counts.total}</span>
+                        <span className="stat-label">Total Devices</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-icon-wrapper success"><Wifi size={24} /></div>
+                    <div className="stat-info">
+                        <span className="stat-value">{counts.online}</span>
+                        <span className="stat-label">Online</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-icon-wrapper accent"><Activity size={24} /></div>
+                    <div className="stat-info">
+                        <span className="stat-value">{counts.playing}</span>
+                        <span className="stat-label">Playing</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-icon-wrapper destructive"><WifiOff size={24} /></div>
+                    <div className="stat-info">
+                        <span className="stat-value">{counts.offline}</span>
+                        <span className="stat-label">Offline</span>
+                    </div>
+                </div>
+            </div>
 
-                        <form onSubmit={handleRegister}>
-                            {regMode === 'pair' ? (
-                                <div className="pairing-container">
-                                    <label>Registration Code</label>
-                                    <div className="code-inputs">
-                                        {pairingCode.map((char, i) => (
-                                            <div key={i} className="code-field-wrapper">
-                                                {i === 4 && <span className="code-split">-</span>}
-                                                <input
-                                                    id={`code-input-${i}`}
-                                                    type="text"
-                                                    value={char}
-                                                    onChange={(e) => handleCodeChange(i, e.target.value)}
-                                                    onKeyDown={(e) => handleCodeKeyDown(i, e)}
-                                                    className="code-field"
-                                                    maxLength={1}
-                                                    autoComplete="off"
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <p className="field-hint">Enter the 8-digit code displayed on your screen</p>
-                                </div>
-                            ) : null}
+            <div className="toolbar">
+                <div className="segmented-control">
+                    <button className={`segment-btn ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => setStatusFilter('all')}>
+                        All <span className="count">{counts.total}</span>
+                    </button>
+                    <button className={`segment-btn ${statusFilter === 'online' ? 'active' : ''}`} onClick={() => setStatusFilter('online')}>
+                        Online <span className="count" style={{ color: '#106b4d' }}>{counts.online}</span>
+                    </button>
+                    <button className={`segment-btn ${statusFilter === 'offline' ? 'active' : ''}`} onClick={() => setStatusFilter('offline')}>
+                        Offline <span className="count">{counts.offline}</span>
+                    </button>
+                    <button className={`segment-btn ${statusFilter === 'playing' ? 'active' : ''}`} onClick={() => setStatusFilter('playing')}>
+                        Playing <span className="count">{counts.playing}</span>
+                    </button>
+                </div>
 
-                            <div className="form-sections">
-                                <div className="form-group full-width">
-                                    <label>Display Name</label>
-                                    <input
-                                        type="text"
-                                        className="premium-input"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="e.g. Reception Main Display"
-                                        required
-                                    />
-                                </div>
-                                {regMode === 'manual' && (
-                                    <div className="form-group full-width">
-                                        <label>Hardware Serial / ID</label>
-                                        <input
-                                            type="text"
-                                            className="premium-input"
-                                            value={formData.deviceCode}
-                                            onChange={(e) => setFormData({ ...formData, deviceCode: e.target.value })}
-                                            placeholder="Unique device identifier"
-                                            required
-                                        />
-                                    </div>
-                                )}
-                                <div className="form-row">
-                                    <div className="form-group">
-                                        <label>Property</label>
-                                        <select
-                                            className="premium-select"
-                                            value={propertyId}
-                                            onChange={(e) => setPropertyId(e.target.value)}
-                                            required
-                                        >
-                                            <option value="">Select Location</option>
-                                            {properties?.map(p => (
-                                                <option key={p.id} value={p.id}>{p.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Area</label>
-                                        <select
-                                            className="premium-select"
-                                            value={formData.zoneId}
-                                            onChange={(e) => setFormData({ ...formData, zoneId: e.target.value })}
-                                            disabled={!propertyId}
-                                            required
-                                        >
-                                            <option value="">Select Area</option>
-                                            {zones?.map(z => (
-                                                <option key={z.id} value={z.id}>{z.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
+                <div className="dropdown-selects">
+                    <select className="premium-select" style={{ width: '160px' }} value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+                        <option value="all">All Properties</option>
+                        {properties?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <select className="premium-select" style={{ width: '160px' }} value={platformFilter} onChange={e => setPlatformFilter(e.target.value)}>
+                        <option value="all">All Platforms</option>
+                        <option value="android">Android</option>
+                        <option value="windows">Windows</option>
+                        <option value="linux">Linux</option>
+                        <option value="web">Web Player</option>
+                    </select>
+                    <select className="premium-select" style={{ width: '160px' }} value={groupBy} onChange={e => setGroupBy(e.target.value)}>
+                        <option value="none">No Grouping</option>
+                        <option value="property">Group by Property</option>
+                        <option value="platform">Group by Platform</option>
+                    </select>
+                </div>
 
-                            <div className="modal-footer">
-                                <button type="button" className="btn btn-ghost" onClick={() => setIsRegistering(false)}>
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary"
-                                    disabled={claimMutation.isPending || registerMutation.isPending}
-                                >
-                                    {regMode === 'pair' ? 'Pair & Activate' : 'Register Display'}
-                                </button>
-                            </div>
-                        </form>
+                <div className="view-toggle">
+                    <button className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')}><Grid size={18} /></button>
+                    <button className={`toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}><List size={18} /></button>
+                </div>
+            </div>
+
+            <div className="search-bar">
+                <Search size={20} className="search-icon" />
+                <input
+                    type="text"
+                    className="premium-input input"
+                    placeholder="Search devices..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                />
+            </div>
+
+            {selectedDevices.length > 0 && (
+                <div className="bulk-actions-bar">
+                    <div className="selection-info">
+                        <span className="count">{selectedDevices.length}</span>
+                        <span>devices selected</span>
+                    </div>
+                    <div className="bulk-buttons">
+                        <button className="btn btn-outline-destructive" onClick={handleBulkDelete}>
+                            <Trash2 size={16} /> Delete Selected
+                        </button>
+                        <button className="btn btn-ghost" onClick={() => setSelectedDevices([])}>Cancel</button>
                     </div>
                 </div>
             )}
 
-            <div className="devices-list">
-                <div className="list-header">
-                    <div className="col-status">Status</div>
-                    <div className="col-info">Display Info</div>
-                    <div className="col-location">Location</div>
-                    <div className="col-health">Health</div>
-                    <div className="col-actions">Actions</div>
+            {Object.entries(deviceGroups).map(([groupName, groupDevices]) => (
+                <div key={groupName} className="device-group-section">
+                    {groupBy !== 'none' && <h2 className="group-title">{groupName} <span className="group-count">({groupDevices.length})</span></h2>}
+
+                    {viewMode === 'grid' ? (
+                        <div className="devices-grid">
+                            {groupDevices.map(device => (
+                                <div
+                                    key={device.id}
+                                    className={`device-card ${selectedDevices.includes(device.id) ? 'selected' : ''}`}
+                                    onClick={() => toggleSelection(device.id)}
+                                >
+                                    <div className="card-header">
+                                        <div className={`device-icon-box ${device.status !== 'online' ? 'offline' : (device.is_playing || device.isPlaying) ? 'playing' : 'online'}`}>
+                                            {device.platform?.toLowerCase() === 'android' ? <Smartphone size={32} /> : <Monitor size={32} />}
+                                            <div className={`status-dot-indicator ${device.status === 'online' ? ((device.is_playing || device.isPlaying) ? 'playing' : 'online') : 'offline'}`}>
+                                                {device.status === 'online' && <Wifi size={10} color="white" />}
+                                            </div>
+                                        </div>
+                                        <div className="device-title-section">
+                                            <h3 className="device-name">{device.device_name}</h3>
+                                            <span className="device-code">DSP-{device.id.slice(0, 3)}</span>
+                                        </div>
+                                        <div className="quick-actions">
+                                            <button
+                                                className="icon-btn-sm primary"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    window.open(`${window.location.origin}/player/${device.id}`, '_blank');
+                                                }}
+                                                title="View Live Player"
+                                            >
+                                                <Monitor size={14} />
+                                            </button>
+                                            <button className="icon-btn-sm" onClick={(e) => { e.stopPropagation(); handleCommand(e, device.id, 'reboot'); }} title="Reboot Device"><RotateCw size={14} /></button>
+                                            <button className="icon-btn-sm" onClick={(e) => { e.stopPropagation(); handleCommand(e, device.id, (device.is_playing || device.isPlaying) ? 'screen_off' : 'screen_on'); }} title="Toggle Screen"><Power size={14} /></button>
+                                            {user?.role !== 'zone_admin' && (
+                                                <button className="icon-btn-sm delete" onClick={(e) => { e.stopPropagation(); handleDeleteDevice(device.id, device.device_name, e); }} title="Delete Device"><Trash2 size={14} /></button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="device-details-list">
+                                        <div className="detail-item">
+                                            <span className="detail-label">Location</span>
+                                            <span className="detail-value">{device.zone_name || 'Front Desk'}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                            <span className="detail-label">Property</span>
+                                            <span className="detail-value">{device.property_name || 'HQ Building'}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                            <span className="detail-label">Platform</span>
+                                            <span className="detail-value platform">{device.platform || 'Android'}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                            <span className="detail-label">Last seen</span>
+                                            <span className="detail-value time">
+                                                {device.last_heartbeat ? 'Just now' : '1m ago'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <hr className="card-divider" />
+
+                                    <div className="card-footer">
+                                        <div className="status-badges">
+                                            <div className={`badge ${device.status === 'online' ? 'success' : 'outline'}`}>
+                                                {device.status === 'online' ? 'Online' : 'Offline'}
+                                            </div>
+                                            {(device.is_playing || device.isPlaying) && (
+                                                <div className="badge playing">
+                                                    <Activity size={14} /> Playing
+                                                </div>
+                                            )}
+                                            <div className="badge outline">Landscape</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="devices-list-view">
+                            <div className="list-row header">
+                                <div style={{ paddingLeft: 10 }}><input type="checkbox" /></div>
+                                <div></div>
+                                <div>Device Name</div>
+                                <div>Property</div>
+                                <div>Platform</div>
+                                <div>Status</div>
+                                <div>Actions</div>
+                            </div>
+                            {groupDevices.map(device => (
+                                <div key={device.id} className={`list-row ${selectedDevices.includes(device.id) ? 'selected' : ''}`} onClick={() => toggleSelection(device.id)}>
+                                    <div style={{ paddingLeft: 10 }}><input type="checkbox" checked={selectedDevices.includes(device.id)} readOnly /></div>
+                                    <div className={`status-dot-indicator ${device.status === 'online' ? 'online' : 'offline'}`} style={{ position: 'relative', top: 0, right: 0 }}></div>
+                                    <div className="detail-value">{device.device_name} <small style={{ color: 'var(--text-secondary)', display: 'block' }}>DSP-{device.id.slice(0, 3)}</small></div>
+                                    <div className="detail-value">{device.property_name || 'HQ Building'}</div>
+                                    <div><span className="detail-value platform">{device.platform}</span></div>
+                                    <div className="status-badges">
+                                        <div className={`badge ${device.status === 'online' ? 'success' : 'outline'}`}>{device.status}</div>
+                                    </div>
+                                    <div className="quick-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            className="icon-btn-sm primary"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                window.open(`${window.location.origin}/player/${device.id}`, '_blank');
+                                            }}
+                                        >
+                                            <Monitor size={14} />
+                                        </button>
+                                        <button className="icon-btn-sm" onClick={(e) => { e.stopPropagation(); handleCommand(e, device.id, 'reboot'); }}><RotateCw size={14} /></button>
+                                        <button className="icon-btn-sm" onClick={(e) => { e.stopPropagation(); handleCommand(e, device.id, (device.is_playing || device.isPlaying) ? 'screen_off' : 'screen_on'); }}><Power size={14} /></button>
+                                        {user?.role !== 'zone_admin' && (
+                                            <button className="icon-btn-sm delete" onClick={(e) => { e.stopPropagation(); handleDeleteDevice(device.id, device.device_name, e); }}><Trash2 size={14} /></button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
+            ))}
 
-                {devices?.map((device) => (
-                    <div key={device.id} className="device-row hover-card">
-                        <div className="col-status">
-                            <div className="status-indicator">
-                                <div className={`status-dot ${device.status}`} style={{ background: getStatusColor(device.status) }}></div>
-                                <span className="status-label">
-                                    {device.status}
-                                    {device.status === 'online' && !(device.is_playing || device.isPlaying) && <small style={{ display: 'block', opacity: 0.7 }}>(Paused)</small>}
-                                </span>
-                            </div>
-                        </div>
+            {
+                filteredDevices?.length === 0 && (
+                    <div className="empty-list-state" style={{ padding: '5rem' }}>
+                        <Monitor size={64} color="var(--border)" style={{ marginBottom: '1.5rem' }} />
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>No devices found</h2>
+                        <p style={{ color: 'var(--text-secondary)' }}>Try adjusting your filters or search query.</p>
+                    </div>
+                )
+            }
 
-                        <div className="col-info">
-                            <div className="device-meta">
-                                <div className="platform-tag">{device.platform}</div>
-                                <h3 className="device-name">{device.device_name}</h3>
-                                <span className={`device-id-tag ${!device.is_playing ? 'screen-off' : ''}`}>
-                                    {device.is_playing ? `ID: ${device.id.slice(0, 8)}...` : 'DISPLAY OFF'}
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="col-location">
-                            <div className="location-info">
-                                <span className="property-main">{device.property_name || 'Unassigned'}</span>
-                                <span className="zone-sub">{device.zone_name || 'No Area'}</span>
-                            </div>
-                        </div>
-
-                        <div className="col-health">
-                            <div className="health-metrics">
-                                <div className="metric">
-                                    <Activity size={12} />
-                                    <span>{(device.last_heartbeat || device.lastHeartbeat) ? 'Active' : 'Never Seen'}</span>
-                                </div>
-                                <div className="last-seen">
-                                    {(device.last_heartbeat || device.lastHeartbeat) ? new Date(device.last_heartbeat || device.lastHeartbeat).toLocaleTimeString() : '--:--'}
+            {
+                isRegistering && (
+                    <div className="modal-overlay" onClick={() => setIsRegistering(false)}>
+                        <div className="modal-content premium-modal pairing-modal-content" onClick={e => e.stopPropagation()}>
+                            <div className="modal-header" style={{ border: 'none', background: 'transparent' }}>
+                                <div style={{ textAlign: 'center', width: '100%' }}>
+                                    <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Pair New Device</h2>
+                                    <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Enter the pairing code displayed on your screen to connect it to your organization.</p>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="col-actions">
-                            <div className="button-group">
-                                <button
-                                    className={`icon-btn tooltip ${commandMutation.isPending && commandMutation.variables?.deviceId === device.id ? 'loading' : ''}`}
-                                    onClick={() => handleCommand(device.id, 'reboot')}
-                                    disabled={commandMutation.isPending}
-                                    data-tooltip="Reboot Player"
-                                >
-                                    <RotateCw size={16} className={commandMutation.isPending && commandMutation.variables?.deviceId === device.id ? 'spin' : ''} />
+                            <form onSubmit={handleRegister} style={{ padding: '0 2rem 2rem' }}>
+                                <div className="pairing-code-display">
+                                    {pairingCode.map((char, i) => (
+                                        <div key={i} className="pairing-digit">
+                                            <input
+                                                id={`code-input-${i}`}
+                                                type="text"
+                                                value={char}
+                                                onChange={(e) => handleCodeChange(i, e.target.value)}
+                                                onKeyDown={(e) => handleCodeKeyDown(i, e)}
+                                                style={{ width: '100%', height: '100%', border: 'none', background: 'transparent', textAlign: 'center', fontSize: '2rem', fontWeight: 800, color: 'var(--primary)', outline: 'none' }}
+                                                maxLength={1}
+                                                autoComplete="off"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="form-sections" style={{ padding: 0 }}>
+                                    <div className="form-group">
+                                        <label style={{ textAlign: 'left', display: 'block', fontWeight: 600, marginBottom: '0.5rem' }}>Device Name</label>
+                                        <input
+                                            type="text"
+                                            className="premium-input"
+                                            style={{ background: 'var(--background)' }}
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                            placeholder="e.g. Main Lobby Display"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="form-row" style={{ marginTop: '1rem' }}>
+                                        <div className="form-group">
+                                            <label style={{ textAlign: 'left', display: 'block', fontWeight: 600, marginBottom: '0.5rem' }}>Property</label>
+                                            <select className="premium-select" style={{ background: 'var(--background)' }} value={propertyId} onChange={(e) => setPropertyId(e.target.value)} required>
+                                                <option value="">Select Property</option>
+                                                {properties?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="form-group">
+                                            <label style={{ textAlign: 'left', display: 'block', fontWeight: 600, marginBottom: '0.5rem' }}>Area</label>
+                                            <select className="premium-select" style={{ background: 'var(--background)' }} value={formData.zoneId} onChange={(e) => setFormData({ ...formData, zoneId: e.target.value })} disabled={!propertyId} required>
+                                                <option value="">Select Area</option>
+                                                {zones?.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '1rem', marginTop: '2rem', fontSize: '1rem', fontWeight: 700, borderRadius: '1rem', background: 'linear-gradient(135deg, var(--primary), #2563eb)' }}>
+                                    Connect Device
                                 </button>
-                                <button
-                                    className={`icon-btn tooltip ${commandMutation.isPending && commandMutation.variables?.deviceId === device.id ? 'loading' : ''}`}
-                                    onClick={() => handleCommand(device.id, (device.is_playing || device.isPlaying) ? 'screen_off' : 'screen_on')}
-                                    disabled={commandMutation.isPending}
-                                    data-tooltip={(device.is_playing || device.isPlaying) ? "Turn Screen OFF" : "Turn Screen ON"}
-                                >
-                                    <Power size={16} color={(device.is_playing || device.isPlaying) ? '#10b981' : '#ef4444'} />
-                                </button>
-                                {user?.role !== 'zone_admin' && (
-                                    <button
-                                        className={`icon-btn tooltip delete ${deleteMutation.isPending && deleteMutation.variables === device.id ? 'loading' : ''}`}
-                                        onClick={(e) => handleDeleteDevice(device.id, device.device_name, e)}
-                                        disabled={deleteMutation.isPending && deleteMutation.variables === device.id}
-                                        data-tooltip="Delete Display"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                )}
-                                <button
-                                    className="icon-btn tooltip primary"
-                                    onClick={() => {
-                                        const url = `${window.location.origin}/player/${device.id}`;
-                                        window.open(url, '_blank');
-                                    }}
-                                    data-tooltip="Preview Player"
-                                >
-                                    <Monitor size={16} />
-                                </button>
-                            </div>
+                            </form>
                         </div>
                     </div>
-                ))}
-
-                {(!devices || devices.length === 0) && (
-                    <div className="empty-list-state">
-                        <div className="empty-icon"><Monitor size={48} /></div>
-                        <h3>No Displays Connected</h3>
-                        <p>Pair your first hardware player or web-browser screen to get started.</p>
-                        {user?.role !== 'zone_admin' && (
-                            <button className="btn btn-primary" onClick={() => setIsRegistering(true)}>
-                                Get Registration Code
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
+                )
+            }
+        </div >
     );
 }

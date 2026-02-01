@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './NumericInput.css';
 
 export default function NumericInput({
@@ -12,6 +12,11 @@ export default function NumericInput({
     showSlider = true
 }) {
     const [inputValue, setInputValue] = useState(value || min);
+
+    // Sync state with prop changes
+    useEffect(() => {
+        setInputValue(value);
+    }, [value]);
 
     const handleSliderChange = (e) => {
         const newValue = parseFloat(e.target.value);

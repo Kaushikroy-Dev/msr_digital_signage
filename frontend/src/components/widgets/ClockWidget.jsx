@@ -7,7 +7,12 @@ export default function ClockWidget({ config = {} }) {
         timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
         showDate = true,
         showSeconds = true,
-        font = { family: 'Arial', size: 48, color: '#ffffff', weight: 'normal' },
+        // Support both old font object and new flat structure from designer
+        fontFamily = config.font?.family || config.fontFamily || 'Arial',
+        fontSize = config.font?.size || config.fontSize || 48,
+        textColor = config.font?.color || config.textColor || '#000000',
+        fontWeight = config.font?.weight || config.fontWeight || 'normal',
+        backgroundColor = config.backgroundColor || 'transparent',
         dateFormat = 'short'
     } = config;
 
@@ -18,7 +23,7 @@ export default function ClockWidget({ config = {} }) {
         const updateTime = () => {
             const now = new Date();
             setTime(now);
-            
+
             if (showDate) {
                 const options = {
                     timeZone: timezone,
@@ -49,7 +54,7 @@ export default function ClockWidget({ config = {} }) {
     const formatTime = (date) => {
         const options = {
             timeZone: timezone,
-            hour12: format === '12h',
+            hour12: format === '12h' || config.timeFormat === '12',
             hour: '2-digit',
             minute: '2-digit',
             ...(showSeconds && { second: '2-digit' })
@@ -58,10 +63,21 @@ export default function ClockWidget({ config = {} }) {
     };
 
     const style = {
-        fontFamily: font.family || 'Arial',
-        fontSize: `${font.size || 48}px`,
-        color: font.color || '#ffffff',
-        fontWeight: font.weight || 'normal'
+        fontFamily: fontFamily,
+        fontSize: `${fontSize}px`,
+        color: textColor,
+        fontWeight: fontWeight,
+        backgroundColor: backgroundColor === 'transparent' ? 'rgba(0,0,0,0.3)' : backgroundColor,
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '4px',
+        padding: '10px',
+        textShadow: textColor === '#ffffff' || textColor === 'white' ? '0 2px 4px rgba(0,0,0,0.5)' : '0 1px 2px rgba(255,255,255,0.3)',
+        boxSizing: 'border-box'
     };
 
     return (

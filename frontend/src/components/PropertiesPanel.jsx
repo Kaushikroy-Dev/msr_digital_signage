@@ -325,10 +325,17 @@ export default function PropertiesPanel({
                         <div className="property-group">
                             <button
                                 className="fill-canvas-btn"
-                                onClick={() => {
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+
                                     // Use actual canvas dimensions from resolution
                                     const canvasWidth = resolution?.width || 1920;
                                     const canvasHeight = resolution?.height || 1080;
+
+                                    console.log(`[PropertiesPanel] Filling canvas with ${canvasWidth}x${canvasHeight}`);
+
                                     onUpdate({
                                         ...selectedZone,
                                         x: 0,

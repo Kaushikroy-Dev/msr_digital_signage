@@ -10,12 +10,12 @@ const DEVICE_FRAMES = {
     phone: { name: 'Phone (9:16)', width: 375, height: 667, icon: Smartphone }
 };
 
-export default function TemplateLivePreview({ 
-    template, 
-    zones = [], 
+export default function TemplateLivePreview({
+    template,
+    zones = [],
     mediaAssets = [],
     isOpen,
-    onClose 
+    onClose
 }) {
     const [deviceFrame, setDeviceFrame] = useState('tv');
     const [showFrame, setShowFrame] = useState(true);
@@ -32,7 +32,7 @@ export default function TemplateLivePreview({
 
     const handleExport = async () => {
         if (!previewRef.current) return;
-        
+
         setIsExporting(true);
         try {
             const canvas = await html2canvas(previewRef.current, {
@@ -41,7 +41,7 @@ export default function TemplateLivePreview({
                 useCORS: true,
                 logging: false
             });
-            
+
             // Convert to blob and download
             canvas.toBlob((blob) => {
                 if (blob) {
@@ -68,13 +68,20 @@ export default function TemplateLivePreview({
     const frame = DEVICE_FRAMES[deviceFrame];
     const maxWidth = 800;
     const maxHeight = 600;
-    const scale = showFrame ? Math.min(maxWidth / frame.width, maxHeight / frame.height, 0.8) : Math.min(maxWidth / frame.width, maxHeight / frame.height);
+
+    // Use template's own resolution as the base for rendering
+    const renderWidth = template.width || 1920;
+    const renderHeight = template.height || 1080;
+
+    // Calculate scale to fit the template resolution into the preview window, 
+    // while also considering the device frame aspect ratio if showFrame is true
+    const scale = Math.min(maxWidth / renderWidth, maxHeight / renderHeight);
+
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
     // Ensure zones are properly formatted
     const formattedZones = (zones || []).map(zone => ({
         ...zone,
-        // Ensure required fields exist
         contentType: zone.contentType || zone.content_type || 'media',
         widgetType: zone.widgetType || zone.widget_type,
         widgetConfig: zone.widgetConfig || zone.widget_config || {},
@@ -86,8 +93,8 @@ export default function TemplateLivePreview({
     const templateForPreview = {
         ...template,
         zones: formattedZones,
-        width: frame.width,
-        height: frame.height
+        width: renderWidth,
+        height: renderHeight
     };
 
     return (
@@ -113,8 +120,8 @@ export default function TemplateLivePreview({
                             />
                             Show Frame
                         </label>
-                        <button 
-                            className="btn btn-sm btn-outline" 
+                        <button
+                            className="btn btn-sm btn-outline"
                             onClick={handleExport}
                             disabled={isExporting}
                             title="Export as Image"
@@ -128,39 +135,53 @@ export default function TemplateLivePreview({
                     </div>
                 </div>
                 <div className="preview-content">
-                    <div 
+                    <div
                         className={`preview-container ${showFrame ? 'with-frame' : ''}`}
                         style={{
-                            width: showFrame ? frame.width * scale + 40 : frame.width * scale,
-                            height: showFrame ? frame.height * scale + 40 : frame.height * scale
+                            width: showFrame ? (renderWidth * scale + 160) : (renderWidth * scale + 60),
+                            minHeight: showFrame ? (renderHeight * scale + 200) : (renderHeight * scale + 100)
                         }}
                     >
                         {showFrame && (
-                            <div className="device-frame">
-                                <frame.icon size={24} />
-                                <span>{frame.name}</span>
+                            <div className="device-frame-info">
+                                <frame.icon size={20} />
+                                <span>{frame.name} (Simulated)</span>
                             </div>
                         )}
-                        <div 
-                            ref={previewRef}
-                            className="preview-canvas"
+
+                        <div
+                            className="scaler-wrapper"
                             style={{
-                                width: `${frame.width}px`,
-                                height: `${frame.height}px`,
-                                transform: `scale(${scale})`,
-                                transformOrigin: 'top left',
+                                width: renderWidth * scale,
+                                height: renderHeight * scale,
                                 position: 'relative',
-                                backgroundColor: template.background_color || '#ffffff'
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
                             }}
                         >
-                            <TemplateRenderer
-                                template={templateForPreview}
-                                zones={formattedZones}
-                                mediaAssets={mediaAssetsMap}
-                                duration={0}
-                                onComplete={() => {}}
-                                apiUrl={apiUrl}
-                            />
+                            <div
+                                ref={previewRef}
+                                className={`preview-canvas ${showFrame ? 'tv-frame' : ''}`}
+                                style={{
+                                    width: `${renderWidth}px`,
+                                    height: `${renderHeight}px`,
+                                    transform: `scale(${scale})`,
+                                    transformOrigin: 'center center',
+                                    position: 'absolute',
+                                    backgroundColor: template.background_color || '#ffffff',
+                                    boxShadow: showFrame ? '0 20px 50px rgba(0,0,0,0.5)' : '0 10px 30px rgba(0,0,0,0.3)'
+                                }}
+                            >
+                                <TemplateRenderer
+                                    template={templateForPreview}
+                                    zones={formattedZones}
+                                    mediaAssets={mediaAssetsMap}
+                                    duration={0}
+                                    onComplete={() => { }}
+                                    apiUrl={apiUrl}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>

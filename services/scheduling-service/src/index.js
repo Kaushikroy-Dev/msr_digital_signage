@@ -38,48 +38,72 @@ app.get('/playlists', authenticateToken, async (req, res) => {
         const { role, userId } = req.user;
         const targetTenantId = tenantId || req.user.tenantId;
 
-        let query = `SELECT * FROM playlists WHERE tenant_id = $1`;
+        let query = `
+            SELECT 
+                p.*,
+                COALESCE(ps.item_count, 0) as item_count,
+                COALESCE(ps.total_duration, 0) as total_duration,
+                ps.thumbnails
+            FROM playlists p
+            LEFT JOIN (
+                SELECT 
+                    pi.playlist_id,
+                    COUNT(pi.id) as item_count,
+                    SUM(pi.duration_seconds) as total_duration,
+                    ARRAY_AGG(
+                        CASE 
+                            WHEN pi.content_type = 'media' THEN ma.thumbnail_path
+                            ELSE NULL 
+                        END 
+                        ORDER BY pi.sequence_order
+                    ) FILTER (WHERE pi.content_type = 'media' AND ma.thumbnail_path IS NOT NULL) as thumbnails
+                FROM playlist_items pi
+                LEFT JOIN media_assets ma ON pi.media_asset_id = ma.id
+                GROUP BY pi.playlist_id
+            ) ps ON p.id = ps.playlist_id
+            WHERE p.tenant_id = $1
+        `;
         const params = [targetTenantId];
         let paramIndex = 2;
 
         // Apply property/zone filtering based on role (same logic as media assets)
         if (role === 'super_admin') {
             if (propertyId) {
-                query += ` AND (property_id = $${paramIndex} OR (is_shared = true AND shared_with_properties IS NOT NULL AND $${paramIndex} = ANY(shared_with_properties)))`;
+                query += ` AND (p.property_id = $${paramIndex} OR (p.is_shared = true AND p.shared_with_properties IS NOT NULL AND $${paramIndex} = ANY(p.shared_with_properties)))`;
                 params.push(propertyId);
                 paramIndex++;
             }
             if (zoneId) {
-                query += ` AND (zone_id = $${paramIndex} OR zone_id IS NULL)`;
+                query += ` AND (p.zone_id = $${paramIndex} OR p.zone_id IS NULL)`;
                 params.push(zoneId);
                 paramIndex++;
             }
         } else if (role === 'property_admin') {
             query += ` AND (
-                property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${paramIndex})
-                OR (is_shared = true AND EXISTS (
+                p.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${paramIndex})
+                OR (p.is_shared = true AND EXISTS (
                     SELECT 1 FROM user_property_access upa 
                     WHERE upa.user_id = $${paramIndex} 
-                    AND shared_with_properties IS NOT NULL
-                    AND upa.property_id = ANY(shared_with_properties)
+                    AND p.shared_with_properties IS NOT NULL
+                    AND upa.property_id = ANY(p.shared_with_properties)
                 ))
             )`;
             params.push(userId);
             paramIndex++;
             if (zoneId) {
-                query += ` AND (zone_id = $${paramIndex} OR zone_id IS NULL)`;
+                query += ` AND (p.zone_id = $${paramIndex} OR p.zone_id IS NULL)`;
                 params.push(zoneId);
                 paramIndex++;
             }
         } else if (role === 'zone_admin') {
             query += ` AND (
-                zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $${paramIndex})
-                OR (is_shared = true AND EXISTS (
+                p.zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $${paramIndex})
+                OR (p.is_shared = true AND EXISTS (
                     SELECT 1 FROM zones z
                     JOIN user_zone_access uza ON z.id = uza.zone_id
                     WHERE uza.user_id = $${paramIndex}
-                    AND shared_with_properties IS NOT NULL
-                    AND z.property_id = ANY(shared_with_properties)
+                    AND p.shared_with_properties IS NOT NULL
+                    AND z.property_id = ANY(p.shared_with_properties)
                 ))
             )`;
             params.push(userId);
@@ -93,11 +117,11 @@ app.get('/playlists', authenticateToken, async (req, res) => {
             if (propertyAccess.rows.length > 0) {
                 const propertyIds = propertyAccess.rows.map(r => r.property_id);
                 query += ` AND (
-                    property_id = ANY($${paramIndex}::UUID[])
-                    OR (is_shared = true AND EXISTS (
+                    p.property_id = ANY($${paramIndex}::UUID[])
+                    OR (p.is_shared = true AND EXISTS (
                         SELECT 1 FROM unnest($${paramIndex}::UUID[]) AS prop_id
-                        WHERE shared_with_properties IS NOT NULL
-                        AND prop_id = ANY(shared_with_properties)
+                        WHERE p.shared_with_properties IS NOT NULL
+                        AND prop_id = ANY(p.shared_with_properties)
                     ))
                 )`;
                 params.push(propertyIds);
@@ -109,7 +133,7 @@ app.get('/playlists', authenticateToken, async (req, res) => {
                 );
                 if (zoneAccess.rows.length > 0) {
                     const zoneIds = zoneAccess.rows.map(r => r.zone_id);
-                    query += ` AND zone_id = ANY($${paramIndex}::UUID[])`;
+                    query += ` AND p.zone_id = ANY($${paramIndex}::UUID[])`;
                     params.push(zoneIds);
                     paramIndex++;
                 } else {
@@ -118,19 +142,29 @@ app.get('/playlists', authenticateToken, async (req, res) => {
             }
         }
 
-        query += ` ORDER BY created_at DESC`;
+        query += ` ORDER BY p.created_at DESC`;
 
         const result = await pool.query(query, params);
-        
-        // Transform snake_case to camelCase for frontend consistency
+
+        // Transform snake_case to camelCase and process stats
         const playlists = result.rows.map(playlist => ({
             ...playlist,
             sharedWithProperties: playlist.shared_with_properties || [],
             propertyId: playlist.property_id,
             zoneId: playlist.zone_id,
-            isShared: playlist.is_shared
+            isShared: playlist.is_shared,
+            itemCount: parseInt(playlist.item_count),
+            totalDuration: parseInt(playlist.total_duration),
+            thumbnails: (playlist.thumbnails || []).map(path => {
+                if (!path) return null;
+                const parts = path.split('/');
+                if (parts.length >= 3) {
+                    return `/uploads/${parts[0]}/thumbnails/${parts[2]}`;
+                }
+                return `/uploads/${path}`;
+            }).filter(Boolean)
         }));
-        
+
         res.json({ playlists });
     } catch (error) {
         console.error('Get playlists error:', error);
@@ -621,7 +655,7 @@ app.get('/playlists/:id/items', async (req, res) => {
             content_name: item.content_name || item.template_name || 'Untitled',
             file_type: item.file_type,
             url: item.storage_path ? `/uploads/${item.storage_path}` : null,
-            thumbnail_url: item.thumbnail_path ? `/uploads/${item.thumbnail_path.split('/').slice(-2).join('/')}` : null,
+            thumbnail_url: item.thumbnail_path ? `/uploads/${item.thumbnail_path}` : null,
             duration_ms: item.duration_seconds * 1000,
             duration_seconds: item.duration_seconds,
             order_index: item.sequence_order,
@@ -810,7 +844,7 @@ app.post('/playlists/:playlistId/assign-devices', authenticateToken, async (req,
         }
 
         await client.query('COMMIT');
-        res.json({ 
+        res.json({
             message: 'Playlist assigned to devices successfully',
             scheduleId: scheduleId
         });
@@ -920,7 +954,7 @@ app.get('/player/:deviceId/content', async (req, res) => {
 
         console.log('[Player] Fetching content for device:', deviceId);
         console.log('[Player] Current time:', currentDate, currentTime, 'Day:', currentDay);
-        
+
         // Check schedule_devices directly for debugging
         const deviceSchedules = await pool.query(
             'SELECT schedule_id FROM schedule_devices WHERE device_id = $1',
@@ -959,7 +993,7 @@ app.get('/player/:deviceId/content', async (req, res) => {
              LIMIT 1`,
             [deviceId, currentDate, currentTime, currentDay]
         );
-        
+
         console.log('[Player] Found', scheduleResult.rows.length, 'matching schedules');
 
         if (scheduleResult.rows.length === 0) {

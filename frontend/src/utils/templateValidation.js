@@ -106,14 +106,19 @@ export function validateTemplate(template, zones, assets = []) {
             }
         });
 
-        // Check for overlapping zones (warning)
+        // Check for overlapping zones (warning) - only if they have the same z-index
         for (let i = 0; i < zones.length; i++) {
             for (let j = i + 1; j < zones.length; j++) {
                 if (zonesOverlap(zones[i], zones[j])) {
-                    warnings.push({
-                        type: 'overlapping_zones',
-                        message: `Zones "${zones[i].name || `Zone ${i + 1}`}" and "${zones[j].name || `Zone ${j + 1}`}" overlap`
-                    });
+                    const z1 = zones[i].zIndex || zones[i].z_index || 0;
+                    const z2 = zones[j].zIndex || zones[j].z_index || 0;
+
+                    if (z1 === z2) {
+                        warnings.push({
+                            type: 'overlapping_zones',
+                            message: `Zones "${zones[i].name || `Zone ${i + 1}`}" and "${zones[j].name || `Zone ${j + 1}`}" overlap at the same depth (z-index: ${z1})`
+                        });
+                    }
                 }
             }
         }

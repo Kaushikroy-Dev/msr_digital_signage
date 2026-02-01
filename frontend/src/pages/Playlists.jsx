@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Play, Trash2, GripVertical, Image, Video, Eye, Monitor, X, Edit2, Layout, Share2 } from 'lucide-react';
+import { Plus, Play, Trash2, GripVertical, Image, Video, Eye, Monitor, X, Edit2, Layout, Share2, Search, Settings, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import PlaylistPreview from '../components/PlaylistPreview';
-import PropertyZoneSelector from '../components/PropertyZoneSelector';
-import ContentShareModal from '../components/ContentShareModal';
 import './Playlists.css';
 
 export default function Playlists() {
@@ -13,248 +11,67 @@ export default function Playlists() {
     const queryClient = useQueryClient();
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
     const [previewPlaylist, setPreviewPlaylist] = useState(null);
-    const [isCreating, setIsCreating] = useState(false);
-    const [playlistName, setPlaylistName] = useState('');
-    const [transitionEffect, setTransitionEffect] = useState('fade');
-    const [assigningPlaylist, setAssigningPlaylist] = useState(null); // playlistId
-    const [selectedAssets, setSelectedAssets] = useState(new Set()); // For bulk selection
-    const [bulkDuration, setBulkDuration] = useState(5); // Default duration for bulk add
-    const [editingItemId, setEditingItemId] = useState(null); // Item being edited
-    const [editingDuration, setEditingDuration] = useState(5);
-    const [editingPlaylist, setEditingPlaylist] = useState(null); // Playlist being edited
-    const [deleteConfirmPlaylist, setDeleteConfirmPlaylist] = useState(null); // Playlist to delete
-    const [contentTab, setContentTab] = useState('media'); // 'media' or 'templates'
-    const [selectedTemplates, setSelectedTemplates] = useState(new Set()); // For template selection
-    const [selectedPropertyId, setSelectedPropertyId] = useState('');
-    const [selectedZoneId, setSelectedZoneId] = useState('');
-    const [shareModalOpen, setShareModalOpen] = useState(false);
-    const [sharingPlaylist, setSharingPlaylist] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [contentTab, setContentTab] = useState('media');
+    const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
+    const [assigningPlaylist, setAssigningPlaylist] = useState(null);
 
-    // Fetch playlists
+    // Editor States (local feedback before mutation)
+    const [localPlaylistData, setLocalPlaylistData] = useState({
+        name: '',
+        description: '',
+        transitionEffect: 'fade',
+        transitionDuration: 1000,
+        isShared: false
+    });
+
+    // Queries
     const { data: playlists } = useQuery({
-        queryKey: ['playlists', user?.tenantId, selectedPropertyId, selectedZoneId],
+        queryKey: ['playlists', user?.tenantId],
         queryFn: async () => {
-            const params = { tenantId: user?.tenantId };
-            if (user?.role === 'super_admin') {
-                if (selectedPropertyId) params.propertyId = selectedPropertyId;
-                if (selectedZoneId) params.zoneId = selectedZoneId;
-            }
-            const response = await api.get('/schedules/playlists', { params });
+            const response = await api.get('/schedules/playlists', { params: { tenantId: user?.tenantId } });
             return response.data.playlists;
         },
         enabled: !!user?.tenantId
     });
 
-    // Fetch media assets for adding to playlist (filtered by selected playlist's property/zone)
     const { data: mediaAssets } = useQuery({
-        queryKey: ['media-assets', user?.tenantId, selectedPlaylist?.propertyId, selectedPlaylist?.zoneId, selectedPropertyId, selectedZoneId],
+        queryKey: ['media-assets', user?.tenantId],
         queryFn: async () => {
-            const params = { tenantId: user?.tenantId };
-            // Filter by selected playlist's property/zone, or selected property/zone for new playlists
-            const filterPropertyId = selectedPlaylist?.propertyId || selectedPlaylist?.property_id || selectedPropertyId;
-            const filterZoneId = selectedPlaylist?.zoneId || selectedPlaylist?.zone_id || selectedZoneId;
-            
-            // Apply filters for all roles, not just super_admin
-            if (filterPropertyId) params.propertyId = filterPropertyId;
-            if (filterZoneId) params.zoneId = filterZoneId;
-            
-            const response = await api.get('/content/assets', { params });
+            const response = await api.get('/content/assets', { params: { tenantId: user?.tenantId } });
             return response.data.assets;
         },
-        enabled: !!user?.tenantId && (!!selectedPlaylist || !!selectedPropertyId || user?.role !== 'super_admin')
+        enabled: isMediaModalOpen
     });
 
-    // Fetch templates for adding to playlist (filtered by selected playlist's property/zone)
     const { data: templates } = useQuery({
-        queryKey: ['templates', user?.tenantId, selectedPlaylist?.propertyId, selectedPlaylist?.zoneId, selectedPropertyId, selectedZoneId],
+        queryKey: ['templates', user?.tenantId],
         queryFn: async () => {
-            const params = { tenantId: user?.tenantId };
-            const filterPropertyId = selectedPlaylist?.propertyId || selectedPlaylist?.property_id || selectedPropertyId;
-            const filterZoneId = selectedPlaylist?.zoneId || selectedPlaylist?.zone_id || selectedZoneId;
-            
-            // Apply filters for all roles, not just super_admin
-            if (filterPropertyId) params.propertyId = filterPropertyId;
-            if (filterZoneId) params.zoneId = filterZoneId;
-            
-            const response = await api.get('/templates', { params });
+            const response = await api.get('/templates', { params: { tenantId: user?.tenantId } });
             return response.data.templates || [];
         },
-        enabled: !!user?.tenantId && (!!selectedPlaylist || !!selectedPropertyId || user?.role !== 'super_admin')
+        enabled: isMediaModalOpen
     });
 
-    // Create playlist mutation
-    const createMutation = useMutation({
-        mutationFn: async (data) => {
-            const response = await api.post('/schedules/playlists', {
-                ...data,
-                tenantId: user.tenantId,
-                userId: user.id,
-                propertyId: selectedPropertyId || undefined,
-                zoneId: selectedZoneId || undefined
-            });
-            return response.data;
-        },
-        onSuccess: (data) => {
-            queryClient.invalidateQueries(['playlists']);
-            // Auto-select the newly created playlist so user can add media/templates
-            setSelectedPlaylist(data);
-            setIsCreating(false);
-            setPlaylistName('');
-            // Don't clear property/zone - keep them for filtering media/templates
-        }
-    });
-
-    // Update playlist mutation
-    const updatePlaylistMutation = useMutation({
-        mutationFn: async ({ playlistId, data }) => {
-            const response = await api.put(`/schedules/playlists/${playlistId}`, data);
-            return response.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlists']);
-            setEditingPlaylist(null);
-        },
-        onError: (err) => {
-            alert(err.response?.data?.error || 'Failed to update playlist');
-        }
-    });
-
-    // Delete playlist mutation
-    const deletePlaylistMutation = useMutation({
-        mutationFn: async (playlistId) => {
-            await api.delete(`/schedules/playlists/${playlistId}`);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlists']);
-            queryClient.invalidateQueries(['schedules']);
-            setDeleteConfirmPlaylist(null);
-            if (selectedPlaylist?.id === deleteConfirmPlaylist?.id) {
-                setSelectedPlaylist(null);
-            }
-        },
-        onError: (err) => {
-            alert(err.response?.data?.error || 'Failed to delete playlist');
-        }
-    });
-
-    // Add item to playlist mutation
-    const addItemMutation = useMutation({
-        mutationFn: async ({ playlistId, assetId, asset, duration }) => {
-            const durationMs = (duration || (asset.fileType === 'video' ? 30 : 5)) * 1000;
-            const response = await api.post(`/schedules/playlists/${playlistId}/items`, {
-                contentType: 'media',
-                contentId: assetId,
-                duration: durationMs,
-                tenantId: user.tenantId
-            });
-            return response.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlist-items']);
-            setSelectedAssets(new Set());
-        }
-    });
-
-    // Add template to playlist mutation
-    const addTemplateMutation = useMutation({
-        mutationFn: async ({ playlistId, templateId, duration }) => {
-            const durationSeconds = duration || 10; // Default 10 seconds for templates
-            const response = await api.post(`/schedules/playlists/${playlistId}/items`, {
-                contentType: 'template',
-                contentId: templateId,
-                duration: durationSeconds,
-                tenantId: user.tenantId
-            });
-            return response.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlist-items']);
-            setSelectedTemplates(new Set());
-        }
-    });
-
-    // Bulk add templates to playlist
-    const bulkAddTemplatesMutation = useMutation({
-        mutationFn: async ({ playlistId, templateIds, duration }) => {
-            const durationSeconds = duration || 10;
-            const promises = templateIds.map(templateId => 
-                api.post(`/schedules/playlists/${playlistId}/items`, {
-                    contentType: 'template',
-                    contentId: templateId,
-                    duration: durationSeconds,
-                    tenantId: user.tenantId
-                })
-            );
-            await Promise.all(promises);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlist-items']);
-            setSelectedTemplates(new Set());
-            alert(`Added ${selectedTemplates.size} templates to playlist!`);
-        }
-    });
-
-    // Bulk add items to playlist
-    const bulkAddMutation = useMutation({
-        mutationFn: async ({ playlistId, assetIds, duration }) => {
-            const durationMs = duration * 1000;
-            const promises = assetIds.map(assetId => 
-                api.post(`/schedules/playlists/${playlistId}/items`, {
-                    contentType: 'media',
-                    contentId: assetId,
-                    duration: durationMs,
-                    tenantId: user.tenantId
-                })
-            );
-            await Promise.all(promises);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlist-items']);
-            setSelectedAssets(new Set());
-            alert(`Added ${selectedAssets.size} items to playlist!`);
-        }
-    });
-
-    // Update item duration mutation
-    const updateItemDurationMutation = useMutation({
-        mutationFn: async ({ playlistId, itemId, duration }) => {
-            // Need to add this endpoint to backend
-            const durationSeconds = duration;
-            await api.put(`/schedules/playlists/${playlistId}/items/${itemId}`, {
-                duration: durationSeconds
-            });
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlist-items']);
-            setEditingItemId(null);
-        }
-    });
-
-    // Fetch playlist items when a playlist is selected
     const { data: playlistItems } = useQuery({
         queryKey: ['playlist-items', selectedPlaylist?.id],
         queryFn: async () => {
-            const response = await api.get(`/schedules/playlists/${selectedPlaylist.id}/items`, {
-                params: { tenantId: user?.tenantId }
-            });
+            const response = await api.get(`/schedules/playlists/${selectedPlaylist.id}/items`);
             return response.data.items;
         },
-        enabled: !!selectedPlaylist?.id && !!user?.tenantId
+        enabled: !!selectedPlaylist?.id
     });
 
-    // Fetch all devices for assignment
+    // Device Assignment Queries
     const { data: allDevices } = useQuery({
         queryKey: ['all-devices', user?.tenantId],
         queryFn: async () => {
-            const response = await api.get('/devices/devices', {
-                params: { tenantId: user?.tenantId }
-            });
+            const response = await api.get('/devices/devices', { params: { tenantId: user?.tenantId } });
             return response.data.devices;
         },
-        enabled: !!user?.tenantId
+        enabled: !!assigningPlaylist
     });
 
-    // Fetch assigned devices for a playlist
     const { data: assignedDevices } = useQuery({
         queryKey: ['playlist-devices', assigningPlaylist],
         queryFn: async () => {
@@ -264,757 +81,446 @@ export default function Playlists() {
         enabled: !!assigningPlaylist
     });
 
-    // Assign playlist to devices mutation
+    // Mutations
+    const createMutation = useMutation({
+        mutationFn: async (data) => {
+            const response = await api.post('/schedules/playlists', { ...data, tenantId: user.tenantId });
+            return response.data;
+        },
+        onSuccess: (data) => {
+            queryClient.invalidateQueries(['playlists']);
+            setSelectedPlaylist(data);
+        }
+    });
+
+    const updatePlaylistMutation = useMutation({
+        mutationFn: async ({ playlistId, data }) => {
+            await api.put(`/schedules/playlists/${playlistId}`, data);
+        },
+        onSuccess: () => queryClient.invalidateQueries(['playlists'])
+    });
+
+    const deletePlaylistMutation = useMutation({
+        mutationFn: async (playlistId) => {
+            await api.delete(`/schedules/playlists/${playlistId}`);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['playlists']);
+            setSelectedPlaylist(null);
+        }
+    });
+
+    const addItemMutation = useMutation({
+        mutationFn: async ({ playlistId, assetId, duration }) => {
+            await api.post(`/schedules/playlists/${playlistId}/items`, {
+                contentType: 'media',
+                contentId: assetId,
+                duration: duration * 1000,
+                tenantId: user.tenantId
+            });
+        },
+        onSuccess: () => queryClient.invalidateQueries(['playlist-items'])
+    });
+
+    const addTemplateMutation = useMutation({
+        mutationFn: async ({ playlistId, templateId, duration }) => {
+            await api.post(`/schedules/playlists/${playlistId}/items`, {
+                contentType: 'template',
+                contentId: templateId,
+                duration: duration,
+                tenantId: user.tenantId
+            });
+        },
+        onSuccess: () => queryClient.invalidateQueries(['playlist-items'])
+    });
+
+    const deleteItemMutation = useMutation({
+        mutationFn: async (itemId) => {
+            await api.delete(`/schedules/playlists/${selectedPlaylist.id}/items/${itemId}`);
+        },
+        onSuccess: () => queryClient.invalidateQueries(['playlist-items'])
+    });
+
+    const updateItemDurationMutation = useMutation({
+        mutationFn: async ({ itemId, duration }) => {
+            await api.put(`/schedules/playlists/${selectedPlaylist.id}/items/${itemId}`, { duration });
+        },
+        onSuccess: () => queryClient.invalidateQueries(['playlist-items'])
+    });
+
     const assignPlaylistMutation = useMutation({
         mutationFn: async ({ playlistId, deviceIds }) => {
-            const response = await api.post(`/schedules/playlists/${playlistId}/assign-devices`, {
-                deviceIds
-            });
-            return response.data;
+            await api.post(`/schedules/playlists/${playlistId}/assign-devices`, { deviceIds });
         },
         onSuccess: () => {
             queryClient.invalidateQueries(['playlist-devices']);
-            queryClient.invalidateQueries(['schedules']);
             queryClient.invalidateQueries(['playlists']);
-            // Don't close modal - let user see the updated assignments
-        },
-        onError: (err) => {
-            alert(err.response?.data?.error || 'Failed to assign playlist to devices');
         }
     });
 
-    // Delete playlist item mutation
-    const deleteItemMutation = useMutation({
-        mutationFn: async (itemId) => {
-            await api.delete(`/schedules/playlists/${selectedPlaylist.id}/items/${itemId}`, {
-                params: { tenantId: user.tenantId }
-            });
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries(['playlist-items']);
-        }
-    });
+    const formatDurationSeconds = (seconds) => {
+        if (!seconds) return '0s';
+        if (seconds < 60) return `${seconds}s`;
+        return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    };
 
-    const handleCreatePlaylist = () => {
-        if (!playlistName) {
-            alert('Please enter a playlist name');
-            return;
-        }
-        
-        if (user?.role === 'super_admin' && !selectedPropertyId) {
-            alert('Please select a property for the playlist');
-            return;
-        }
+    const calculateTotalDuration = (items) => {
+        if (!items || items.length === 0) return '0s';
+        const totalMs = items.reduce((acc, item) => acc + (item.duration_ms || item.duration_seconds * 1000 || 0), 0);
+        return formatDurationSeconds(Math.floor(totalMs / 1000));
+    };
 
-        createMutation.mutate({
-            name: playlistName,
-            description: '',
-            transitionEffect,
-            transitionDuration: 1000
+    const handleLocalPropertyChange = (key, value) => {
+        const newData = { ...localPlaylistData, [key]: value };
+        setLocalPlaylistData(newData);
+        updatePlaylistMutation.mutate({
+            playlistId: selectedPlaylist.id,
+            data: {
+                name: newData.name,
+                description: newData.description,
+                transitionEffect: newData.transitionEffect,
+                transitionDuration: newData.transitionDuration,
+                isShared: newData.isShared
+            }
         });
     };
+
+    const filteredPlaylists = playlists?.filter(p =>
+        p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    useEffect(() => {
+        if (selectedPlaylist) {
+            setLocalPlaylistData({
+                name: selectedPlaylist.name,
+                description: selectedPlaylist.description || '',
+                transitionEffect: selectedPlaylist.transition_effect || 'fade',
+                transitionDuration: selectedPlaylist.transition_duration_ms || 1000,
+                isShared: selectedPlaylist.is_shared || false
+            });
+        }
+    }, [selectedPlaylist]);
+
+    // Render Logic
+    if (selectedPlaylist) {
+        return (
+            <div className="playlists-page">
+                <div className="playlist-editor-new">
+                    <div className="editor-header">
+                        <div className="back-header">
+                            <button className="back-btn" onClick={() => setSelectedPlaylist(null)}>
+                                <ChevronRight style={{ transform: 'rotate(180deg)' }} />
+                            </button>
+                            <div className="header-info">
+                                <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Edit Playlist</h1>
+                                <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Configure your playlist content and settings</p>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                            <button className="btn btn-outline"
+                                onClick={() => setPreviewPlaylist(selectedPlaylist)}>
+                                <Play size={16} /> Preview
+                            </button>
+                            <button className="btn btn-primary" onClick={() => setSelectedPlaylist(null)}>
+                                Save Playlist
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="editor-grid">
+                        <div className="sidebar-panel">
+                            <div className="panel-card">
+                                <h4>General Settings</h4>
+                                <div className="form-group">
+                                    <label>Playlist Name *</label>
+                                    <input
+                                        className="input"
+                                        value={localPlaylistData.name}
+                                        onChange={(e) => handleLocalPropertyChange('name', e.target.value)}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Description</label>
+                                    <textarea
+                                        className="input"
+                                        style={{ minHeight: '80px', resize: 'none' }}
+                                        value={localPlaylistData.description}
+                                        onChange={(e) => handleLocalPropertyChange('description', e.target.value)}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Transition Effect</label>
+                                    <select className="input"
+                                        value={localPlaylistData.transitionEffect}
+                                        onChange={(e) => handleLocalPropertyChange('transitionEffect', e.target.value)}>
+                                        <option value="fade">Fade</option>
+                                        <option value="slide">Slide</option>
+                                        <option value="wipe">Wipe</option>
+                                        <option value="zoom">Zoom</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                        <label style={{ margin: 0 }}>Transition Duration</label>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>{localPlaylistData.transitionDuration}ms</span>
+                                    </div>
+                                    <input type="range" className="range-slider" min="100" max="2000" step="100"
+                                        value={localPlaylistData.transitionDuration}
+                                        onChange={(e) => handleLocalPropertyChange('transitionDuration', parseInt(e.target.value))}
+                                    />
+                                </div>
+                                <div className="form-group" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
+                                    <label style={{ margin: 0 }}>Share with organization</label>
+                                    <label className="switch">
+                                        <input type="checkbox" checked={localPlaylistData.isShared}
+                                            onChange={(e) => handleLocalPropertyChange('isShared', e.target.checked)} />
+                                        <span className="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="panel-card summary-grid">
+                                <div className="summary-item">
+                                    <span className="summary-val">{playlistItems?.length || 0}</span>
+                                    <span className="summary-lbl">Items</span>
+                                </div>
+                                <div className="summary-item">
+                                    <span className="summary-val">{calculateTotalDuration(playlistItems)}</span>
+                                    <span className="summary-lbl">Duration</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="items-panel">
+                            <div className="panel-header">
+                                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Playlist Items</h3>
+                                <button className="btn btn-primary" onClick={() => setIsMediaModalOpen(true)}>
+                                    <Plus size={18} /> Add Media
+                                </button>
+                            </div>
+                            <div className="items-list-container">
+                                {playlistItems?.map((item, idx) => (
+                                    <div className="item-row" key={item.id}>
+                                        <GripVertical size={20} className="drag-grip" />
+                                        <span className="row-index">{idx + 1}</span>
+                                        {item.thumbnail_url ? (
+                                            <img
+                                                src={`${import.meta.env.VITE_API_URL}${item.thumbnail_url}`}
+                                                className="row-thumb"
+                                                alt=""
+                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                            />
+                                        ) : null}
+                                        <div className="row-thumb-placeholder" style={{ display: item.thumbnail_url ? 'none' : 'flex' }}>
+                                            {item.content_type === 'template' ? <Layout size={20} /> : <Image size={20} />}
+                                        </div>
+                                        <div className="row-info">
+                                            <p className="row-name" style={{ color: 'var(--text-primary)' }}>{item.content_name || 'Untitled Content'}</p>
+                                            <div className="row-type">
+                                                {item.content_type === 'template' ? <Layout size={12} /> : <Image size={12} />}
+                                                <span>{item.content_type === 'template' ? 'Template' : (item.file_type || 'Media')}</span>
+                                            </div>
+                                        </div>
+                                        <div className="row-duration">
+                                            <input
+                                                type="number"
+                                                className="duration-input"
+                                                value={(item.duration_ms || item.duration_seconds * 1000) / 1000}
+                                                onChange={(e) => updateItemDurationMutation.mutate({ itemId: item.id, duration: parseInt(e.target.value) })}
+                                            />
+                                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>sec</span>
+                                        </div>
+                                        <div className="row-actions">
+                                            <button className="btn-row-action delete" onClick={() => {
+                                                if (confirm('Remove this item?')) deleteItemMutation.mutate(item.id);
+                                            }}>
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {(!playlistItems || playlistItems.length === 0) && (
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.3 }}>
+                                        <Layout size={64} strokeWidth={1} style={{ marginBottom: '1rem' }} />
+                                        <p>No content added to this playlist yet.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {isMediaModalOpen && (
+                    <div className="modal-overlay" onClick={() => setIsMediaModalOpen(false)}>
+                        <div className="modal-content modern-modal-content" onClick={e => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>Select Media Asset</h2>
+                                <button className="btn-icon" onClick={() => setIsMediaModalOpen(false)}><X size={20} /></button>
+                            </div>
+                            <div className="tab-container">
+                                <button className={`tab-btn ${contentTab === 'media' ? 'active' : ''}`} onClick={() => setContentTab('media')}>Assets</button>
+                                <button className={`tab-btn ${contentTab === 'templates' ? 'active' : ''}`} onClick={() => setContentTab('templates')}>Templates</button>
+                            </div>
+                            <div className="modal-body" style={{ maxHeight: '70vh' }}>
+                                <div className="asset-selection-grid">
+                                    {contentTab === 'media' ? (
+                                        mediaAssets?.map(asset => (
+                                            <div
+                                                key={asset.id}
+                                                className="asset-card-select"
+                                                onClick={() => addItemMutation.mutate({
+                                                    playlistId: selectedPlaylist.id,
+                                                    assetId: asset.id,
+                                                    duration: asset.fileType === 'video' ? 30 : 10
+                                                })}
+                                            >
+                                                {asset.thumbnailUrl ? (
+                                                    <img src={`${import.meta.env.VITE_API_URL}${asset.thumbnailUrl}`} className="asset-thumb-small" alt="" />
+                                                ) : (
+                                                    <div className="asset-thumb-small" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--background)' }}>
+                                                        {asset.fileType === 'video' ? <Video size={32} color="var(--border)" /> : <Image size={32} color="var(--border)" />}
+                                                    </div>
+                                                )}
+                                                <div className="asset-info-small">
+                                                    <span className="asset-name-small" style={{ color: 'var(--text-primary)' }}>{asset.originalName}</span>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{asset.fileType}</span>
+                                                </div>
+                                                <div className="select-indicator"><Plus size={12} /></div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        templates?.map(tpl => (
+                                            <div
+                                                key={tpl.id}
+                                                className="asset-card-select"
+                                                onClick={() => addTemplateMutation.mutate({ playlistId: selectedPlaylist.id, templateId: tpl.id, duration: 10 })}
+                                            >
+                                                <div className="asset-thumb-small" style={{ background: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Layout size={40} color="var(--border)" strokeWidth={1.5} />
+                                                </div>
+                                                <div className="asset-info-small">
+                                                    <span className="asset-name-small" style={{ color: 'var(--text-primary)' }}>{tpl.name}</span>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Template</span>
+                                                </div>
+                                                <div className="select-indicator"><Plus size={12} /></div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {previewPlaylist && <PlaylistPreview playlistId={previewPlaylist.id} onClose={() => setPreviewPlaylist(null)} />}
+            </div>
+        );
+    }
 
     return (
         <div className="playlists-page">
             <div className="page-header">
-                <div>
-                    <h1>Playlists</h1>
-                    <p>Create and manage content playlists</p>
+                <div className="header-title">
+                    <h1 style={{ color: 'var(--text-primary)', background: 'none', WebkitTextFillColor: 'initial' }}>Playlists</h1>
+                    <p style={{ color: 'var(--text-secondary)' }}>{playlists?.length || 0} active playlists • Manage sequential playback</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setIsCreating(true)}>
-                    <Plus size={18} />
-                    New Playlist
+                <button className="btn btn-primary" onClick={() => {
+                    const name = prompt('New Playlist Name:');
+                    if (name) createMutation.mutate({ name, transitionEffect: 'fade', transitionDuration: 1000 });
+                }}>
+                    <Plus size={20} /> Create Playlist
                 </button>
             </div>
 
-            {user?.role === 'super_admin' && !isCreating && !selectedPlaylist && (
-                <div style={{ marginBottom: '20px' }}>
-                    <PropertyZoneSelector
-                        selectedPropertyId={selectedPropertyId}
-                        selectedZoneId={selectedZoneId}
-                        onPropertyChange={setSelectedPropertyId}
-                        onZoneChange={setSelectedZoneId}
-                        required={false}
-                    />
-                </div>
-            )}
-
-            {isCreating && (
-                <div className="card create-playlist-card">
-                    <h2>Create New Playlist</h2>
-                    <div className="form-grid">
-                        <div className="form-group">
-                            <label>Playlist Name</label>
-                            <input
-                                type="text"
-                                className="input"
-                                value={playlistName}
-                                onChange={(e) => setPlaylistName(e.target.value)}
-                                placeholder="Enter playlist name"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Transition Effect</label>
-                            <select
-                                className="input"
-                                value={transitionEffect}
-                                onChange={(e) => setTransitionEffect(e.target.value)}
-                            >
-                                <option value="fade">Fade</option>
-                                <option value="slide">Slide</option>
-                                <option value="wipe">Wipe</option>
-                                <option value="zoom">Zoom</option>
-                                <option value="rotate">Rotate</option>
-                                <option value="dissolve">Dissolve</option>
-                                <option value="blur">Blur</option>
-                                <option value="cut">Cut</option>
-                            </select>
-                        </div>
-                        <div className="form-group">
-                            <PropertyZoneSelector
-                                selectedPropertyId={selectedPropertyId}
-                                selectedZoneId={selectedZoneId}
-                                onPropertyChange={setSelectedPropertyId}
-                                onZoneChange={setSelectedZoneId}
-                                required={user?.role === 'super_admin'}
-                            />
-                        </div>
-                    </div>
-                    <div className="form-actions">
-                        <button className="btn btn-primary" onClick={handleCreatePlaylist}>
-                            Create Playlist
-                        </button>
-                        <button className="btn btn-outline" onClick={() => setIsCreating(false)}>
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            )}
+            <div className="search-container">
+                <input
+                    className="input"
+                    placeholder="Search by playlist name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ paddingLeft: '2.8rem' }}
+                />
+                <div className="search-icon"><Search size={18} /></div>
+            </div>
 
             <div className="playlists-grid">
-                {playlists?.map((playlist) => (
-                    <div
-                        key={playlist.id}
-                        className="playlist-card"
-                        onClick={() => setSelectedPlaylist(playlist)}
-                    >
-                        <div className="playlist-icon">
-                            <Play size={32} />
+                {filteredPlaylists?.map((playlist) => (
+                    <div key={playlist.id} className="playlist-card" onClick={() => setSelectedPlaylist(playlist)}>
+                        <div className="card-thumbnail-container collage-2">
+                            <img src={playlist.thumbnails?.[0] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[0]}` : `https://picsum.photos/seed/${playlist.id}1/400/300`} className="thumb-img" alt="" />
+                            <img src={playlist.thumbnails?.[1] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[1]}` : `https://picsum.photos/seed/${playlist.id}2/400/300`} className="thumb-img" alt="" />
+                            <div className="item-count-badge">{playlist.itemCount || 0} items</div>
+                            <div className="card-actions-overlay" onClick={e => e.stopPropagation()}>
+                                <button className="action-btn-sm" onClick={() => setAssigningPlaylist(playlist.id)} title="Assign to Devices"><Monitor size={16} /></button>
+                                <button className="action-btn-sm" onClick={() => setPreviewPlaylist(playlist)} title="Preview"><Eye size={16} /></button>
+                                <button className="action-btn-sm" onClick={() => {
+                                    if (confirm('Delete this playlist permanent?')) deletePlaylistMutation.mutate(playlist.id);
+                                }} title="Delete"><Trash2 size={16} /></button>
+                            </div>
                         </div>
-                        <h3>{playlist.name}</h3>
-                        <p className="playlist-meta">
-                            {playlist.transition_effect} · {playlist.transition_duration_ms}ms
-                        </p>
-                        <div className="playlist-actions">
-                            {user?.role === 'super_admin' && (
-                                <button
-                                    className="btn-icon"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSharingPlaylist(playlist);
-                                        setShareModalOpen(true);
-                                    }}
-                                    title="Share Playlist"
-                                >
-                                    <Share2 size={16} />
-                                </button>
-                            )}
-                            <button
-                                className="btn-icon"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAssigningPlaylist(playlist.id);
-                                }}
-                                title="Assign to Devices"
-                            >
-                                <Monitor size={16} />
-                            </button>
-                            <button
-                                className="btn-icon"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingPlaylist(playlist);
-                                }}
-                                title="Edit Playlist"
-                            >
-                                <Edit2 size={16} />
-                            </button>
-                            <button
-                                className="btn-icon"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPreviewPlaylist(playlist);
-                                }}
-                                title="Preview Playlist"
-                            >
-                                <Eye size={16} />
-                            </button>
-                            <button
-                                className="btn-icon"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDeleteConfirmPlaylist(playlist);
-                                }}
-                                title="Delete Playlist"
-                            >
-                                <Trash2 size={16} />
-                            </button>
+                        <div className="card-body">
+                            <h3 style={{ color: 'var(--text-primary)' }}>{playlist.name}</h3>
+                            <p style={{ color: 'var(--text-secondary)' }}>{playlist.description || 'Global sequential content for digital signage nodes.'}</p>
+                            <div className="card-footer" style={{ borderTopColor: 'var(--border)' }}>
+                                <div className="footer-tag" style={{ background: 'var(--background)', color: 'var(--text-secondary)' }}><Play size={12} /> {formatDurationSeconds(playlist.totalDuration)}</div>
+                                <div className="footer-tag" style={{ background: 'var(--background)', color: 'var(--text-secondary)' }}>{playlist.transition_effect}</div>
+                                {playlist.is_shared && <div className="footer-tag shared" style={{ background: 'rgba(25, 118, 210, 0.1)', color: 'var(--primary)' }}><Share2 size={12} /> Shared</div>}
+                            </div>
                         </div>
-                        {playlist.is_shared && (
-                            <span className="shared-badge" style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#1976d2' }}>
-                                <Share2 size={12} /> Shared
-                            </span>
-                        )}
                     </div>
                 ))}
             </div>
 
-            {editingPlaylist && (
-                <div className="modal-overlay" onClick={() => setEditingPlaylist(null)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Edit Playlist</h2>
-                            <button className="btn-icon" onClick={() => setEditingPlaylist(null)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="modal-body">
-                            <div className="form-group" style={{ marginBottom: '16px' }}>
-                                <label>Playlist Name</label>
-                                <input
-                                    type="text"
-                                    className="input"
-                                    defaultValue={editingPlaylist.name}
-                                    id="edit-playlist-name"
-                                    placeholder="Enter playlist name"
-                                />
-                            </div>
-                            <div className="form-group" style={{ marginBottom: '16px' }}>
-                                <label>Transition Effect</label>
-                                <select
-                                    className="input"
-                                    defaultValue={editingPlaylist.transition_effect}
-                                    id="edit-playlist-transition"
-                                >
-                                    <option value="fade">Fade</option>
-                                    <option value="slide">Slide</option>
-                                    <option value="wipe">Wipe</option>
-                                    <option value="zoom">Zoom</option>
-                                    <option value="rotate">Rotate</option>
-                                    <option value="dissolve">Dissolve</option>
-                                    <option value="blur">Blur</option>
-                                    <option value="cut">Cut</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label>Transition Duration (ms)</label>
-                                <input
-                                    type="number"
-                                    className="input"
-                                    defaultValue={editingPlaylist.transition_duration_ms}
-                                    id="edit-playlist-duration"
-                                    min="100"
-                                    max="5000"
-                                    step="100"
-                                />
-                            </div>
-                        </div>
-                        <div className="modal-footer">
-                            <button
-                                className="btn btn-primary"
-                                onClick={() => {
-                                    const name = document.getElementById('edit-playlist-name').value;
-                                    const transitionEffect = document.getElementById('edit-playlist-transition').value;
-                                    const transitionDuration = parseInt(document.getElementById('edit-playlist-duration').value) || 1000;
-                                    
-                                    if (!name.trim()) {
-                                        alert('Please enter a playlist name');
-                                        return;
-                                    }
-
-                                    updatePlaylistMutation.mutate({
-                                        playlistId: editingPlaylist.id,
-                                        data: {
-                                            name: name.trim(),
-                                            transitionEffect,
-                                            transitionDuration
-                                        }
-                                    });
-                                }}
-                                disabled={updatePlaylistMutation.isPending}
-                            >
-                                {updatePlaylistMutation.isPending ? 'Saving...' : 'Save Changes'}
-                            </button>
-                            <button
-                                className="btn btn-outline"
-                                onClick={() => setEditingPlaylist(null)}
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {deleteConfirmPlaylist && (
-                <div className="modal-overlay" onClick={() => setDeleteConfirmPlaylist(null)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-                        <div className="modal-header">
-                            <h2>Delete Playlist</h2>
-                            <button className="btn-icon" onClick={() => setDeleteConfirmPlaylist(null)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="modal-body">
-                            <p style={{ marginBottom: '16px' }}>
-                                Are you sure you want to delete <strong>"{deleteConfirmPlaylist.name}"</strong>?
-                            </p>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                                This will also delete all items in this playlist and any schedules using it. This action cannot be undone.
-                            </p>
-                        </div>
-                        <div className="modal-footer">
-                            <button
-                                className="btn btn-danger"
-                                onClick={() => deletePlaylistMutation.mutate(deleteConfirmPlaylist.id)}
-                                disabled={deletePlaylistMutation.isPending}
-                                style={{ background: '#ef4444', color: 'white' }}
-                            >
-                                {deletePlaylistMutation.isPending ? 'Deleting...' : 'Delete Playlist'}
-                            </button>
-                            <button
-                                className="btn btn-outline"
-                                onClick={() => setDeleteConfirmPlaylist(null)}
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {previewPlaylist && (
-                <PlaylistPreview
-                    playlistId={previewPlaylist.id}
-                    onClose={() => setPreviewPlaylist(null)}
-                />
-            )}
-
-            {shareModalOpen && sharingPlaylist && (
-                <ContentShareModal
-                    isOpen={shareModalOpen}
-                    onClose={() => {
-                        setShareModalOpen(false);
-                        setSharingPlaylist(null);
-                    }}
-                    contentId={sharingPlaylist.id}
-                    contentType="playlist"
-                    currentSharedProperties={sharingPlaylist.sharedWithProperties || []}
-                    isShared={sharingPlaylist.isShared || false}
-                />
-            )}
-
             {assigningPlaylist && (
                 <div className="modal-overlay" onClick={() => setAssigningPlaylist(null)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Assign Playlist to Devices</h2>
-                            <button className="btn-icon" onClick={() => setAssigningPlaylist(null)}>
-                                <X size={20} />
-                            </button>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', background: 'var(--surface)', color: 'var(--text-primary)' }}>
+                        <div className="modal-header" style={{ borderBottom: '1px solid var(--border)' }}>
+                            <h2>Assign to Devices</h2>
+                            <button className="btn-icon" onClick={() => setAssigningPlaylist(null)}><X size={20} /></button>
                         </div>
                         <div className="modal-body">
-                            <p style={{ marginBottom: '20px', color: 'var(--text-secondary)' }}>
-                                Select devices to play this playlist. A schedule will be created automatically.
-                            </p>
-                            <div className="devices-selection-grid">
-                                {allDevices?.map((device) => {
+                            <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>Select devices to play this playlist.</p>
+                            <div className="devices-selection-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
+                                {allDevices?.map(device => {
                                     const isAssigned = assignedDevices?.some(d => d.id === device.id);
                                     return (
                                         <div
                                             key={device.id}
                                             className={`device-selection-card ${isAssigned ? 'assigned' : ''}`}
                                             onClick={() => {
-                                                if (assignPlaylistMutation.isPending) return;
-                                                
-                                                const currentAssigned = assignedDevices?.map(d => d.id) || [];
-                                                const deviceIds = isAssigned
-                                                    ? currentAssigned.filter(id => id !== device.id)
-                                                    : [...currentAssigned, device.id];
-                                                
-                                                assignPlaylistMutation.mutate({
-                                                    playlistId: assigningPlaylist,
-                                                    deviceIds
-                                                });
+                                                const currentIds = assignedDevices?.map(d => d.id) || [];
+                                                const newIds = isAssigned ? currentIds.filter(id => id !== device.id) : [...currentIds, device.id];
+                                                assignPlaylistMutation.mutate({ playlistId: assigningPlaylist, deviceIds: newIds });
+                                            }}
+                                            style={{
+                                                padding: '1rem',
+                                                border: `1px solid ${isAssigned ? 'var(--primary)' : 'var(--border)'}`,
+                                                borderRadius: '12px',
+                                                cursor: 'pointer',
+                                                background: isAssigned ? 'rgba(25, 118, 210, 0.05)' : 'transparent',
+                                                transition: 'all 0.2s',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
                                             }}
                                         >
                                             <div className="device-selection-info">
-                                                <h4>{device.device_name}</h4>
-                                                <p>{device.property_name} • {device.zone_name}</p>
+                                                <h4 style={{ margin: 0, fontSize: '1rem' }}>{device.device_name}</h4>
+                                                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{device.property_name} • {device.zone_name}</p>
                                             </div>
-                                            <div className="device-selection-status">
-                                                <span className={`status-dot ${device.status}`}></span>
-                                                {isAssigned && <span className="assigned-badge">Assigned</span>}
-                                            </div>
+                                            {isAssigned && <div className="assigned-badge" style={{ background: 'var(--primary)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem' }}>Assigned</div>}
                                         </div>
                                     );
                                 })}
                             </div>
-                            {assignedDevices && assignedDevices.length > 0 && (
-                                <div style={{ marginTop: '20px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                                    <p style={{ fontWeight: '600', marginBottom: '8px' }}>Currently Assigned ({assignedDevices.length}):</p>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                        {assignedDevices.map(device => (
-                                            <span key={device.id} style={{ 
-                                                padding: '4px 12px', 
-                                                background: 'var(--primary)', 
-                                                color: 'white', 
-                                                borderRadius: '4px',
-                                                fontSize: '14px'
-                                            }}>
-                                                {device.device_name}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
-                        <div className="modal-footer">
-                            <button className="btn btn-primary" onClick={() => setAssigningPlaylist(null)}>
-                                Done
-                            </button>
+                        <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', padding: '1rem' }}>
+                            <button className="btn btn-primary" onClick={() => setAssigningPlaylist(null)}>Done</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {selectedPlaylist && (
-                <div className="playlist-editor card">
-                    <h2>{selectedPlaylist.name}</h2>
-                    <div className="editor-layout">
-                        <div className="media-library-panel">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <button
-                                        className={`btn ${contentTab === 'media' ? 'btn-primary' : 'btn-outline'}`}
-                                        style={{ padding: '6px 12px', fontSize: '12px' }}
-                                        onClick={() => {
-                                            setContentTab('media');
-                                            setSelectedTemplates(new Set());
-                                        }}
-                                    >
-                                        Media
-                                    </button>
-                                    <button
-                                        className={`btn ${contentTab === 'templates' ? 'btn-primary' : 'btn-outline'}`}
-                                        style={{ padding: '6px 12px', fontSize: '12px' }}
-                                        onClick={() => {
-                                            setContentTab('templates');
-                                            setSelectedAssets(new Set());
-                                        }}
-                                    >
-                                        Templates
-                                    </button>
-                                </div>
-                                {contentTab === 'media' && selectedAssets.size > 0 && (
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                            {selectedAssets.size} selected
-                                        </span>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="60"
-                                            value={bulkDuration}
-                                            onChange={(e) => setBulkDuration(parseInt(e.target.value) || 5)}
-                                            style={{ width: '60px', padding: '4px 8px', fontSize: '12px' }}
-                                            placeholder="sec"
-                                        />
-                                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>sec</span>
-                                        <button
-                                            className="btn btn-primary"
-                                            style={{ padding: '6px 12px', fontSize: '12px' }}
-                                            onClick={() => {
-                                                bulkAddMutation.mutate({
-                                                    playlistId: selectedPlaylist.id,
-                                                    assetIds: Array.from(selectedAssets),
-                                                    duration: bulkDuration
-                                                });
-                                            }}
-                                            disabled={bulkAddMutation.isPending}
-                                        >
-                                            Add {selectedAssets.size} Items
-                                        </button>
-                                        <button
-                                            className="btn btn-outline"
-                                            style={{ padding: '6px 12px', fontSize: '12px' }}
-                                            onClick={() => setSelectedAssets(new Set())}
-                                        >
-                                            Clear
-                                        </button>
-                                    </div>
-                                )}
-                                {contentTab === 'templates' && selectedTemplates.size > 0 && (
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                            {selectedTemplates.size} selected
-                                        </span>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="60"
-                                            value={bulkDuration}
-                                            onChange={(e) => setBulkDuration(parseInt(e.target.value) || 10)}
-                                            style={{ width: '60px', padding: '4px 8px', fontSize: '12px' }}
-                                            placeholder="sec"
-                                        />
-                                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>sec</span>
-                                        <button
-                                            className="btn btn-primary"
-                                            style={{ padding: '6px 12px', fontSize: '12px' }}
-                                            onClick={() => {
-                                                bulkAddTemplatesMutation.mutate({
-                                                    playlistId: selectedPlaylist.id,
-                                                    templateIds: Array.from(selectedTemplates),
-                                                    duration: bulkDuration
-                                                });
-                                            }}
-                                            disabled={bulkAddTemplatesMutation.isPending}
-                                        >
-                                            Add {selectedTemplates.size} Templates
-                                        </button>
-                                        <button
-                                            className="btn btn-outline"
-                                            style={{ padding: '6px 12px', fontSize: '12px' }}
-                                            onClick={() => setSelectedTemplates(new Set())}
-                                        >
-                                            Clear
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                            {contentTab === 'media' && (
-                                <div className="media-items">
-                                    {mediaAssets?.map((asset) => {
-                                    const isSelected = selectedAssets.has(asset.id);
-                                    return (
-                                        <div key={asset.id} className={`media-item ${isSelected ? 'selected' : ''}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={(e) => {
-                                                    const newSelected = new Set(selectedAssets);
-                                                    if (e.target.checked) {
-                                                        newSelected.add(asset.id);
-                                                    } else {
-                                                        newSelected.delete(asset.id);
-                                                    }
-                                                    setSelectedAssets(newSelected);
-                                                }}
-                                                style={{ marginRight: '8px' }}
-                                            />
-                                            {asset.fileType === 'image' ? (
-                                                <Image size={20} />
-                                            ) : (
-                                                <Video size={20} />
-                                            )}
-                                            <span>{asset.originalName}</span>
-                                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    max="60"
-                                                    defaultValue={asset.fileType === 'video' ? 30 : 5}
-                                                    style={{ width: '50px', padding: '4px', fontSize: '12px' }}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            const duration = parseInt(e.target.value) || 5;
-                                                            addItemMutation.mutate({
-                                                                playlistId: selectedPlaylist.id,
-                                                                assetId: asset.id,
-                                                                asset,
-                                                                duration
-                                                            });
-                                                            e.target.value = '';
-                                                        }
-                                                    }}
-                                                    placeholder={asset.fileType === 'video' ? '30' : '5'}
-                                                />
-                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>s</span>
-                                                <button
-                                                    className="btn-add"
-                                                    onClick={() => {
-                                                        const duration = asset.fileType === 'video' ? 30 : 5;
-                                                        addItemMutation.mutate({
-                                                            playlistId: selectedPlaylist.id,
-                                                            assetId: asset.id,
-                                                            asset,
-                                                            duration
-                                                        });
-                                                    }}
-                                                    disabled={addItemMutation.isPending}
-                                                    title="Add with default duration"
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                                </div>
-                            )}
-                            {contentTab === 'templates' && (
-                                <div className="media-items">
-                                    {templates?.map((template) => {
-                                        const isSelected = selectedTemplates.has(template.id);
-                                        return (
-                                            <div key={template.id} className={`media-item ${isSelected ? 'selected' : ''}`}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={(e) => {
-                                                        const newSelected = new Set(selectedTemplates);
-                                                        if (e.target.checked) {
-                                                            newSelected.add(template.id);
-                                                        } else {
-                                                            newSelected.delete(template.id);
-                                                        }
-                                                        setSelectedTemplates(newSelected);
-                                                    }}
-                                                    style={{ marginRight: '8px' }}
-                                                />
-                                                <Layout size={20} />
-                                                <span>{template.name}</span>
-                                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="60"
-                                                        defaultValue={10}
-                                                        style={{ width: '50px', padding: '4px', fontSize: '12px' }}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                const duration = parseInt(e.target.value) || 10;
-                                                                addTemplateMutation.mutate({
-                                                                    playlistId: selectedPlaylist.id,
-                                                                    templateId: template.id,
-                                                                    duration
-                                                                });
-                                                                e.target.value = '';
-                                                            }
-                                                        }}
-                                                        placeholder="10"
-                                                    />
-                                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>s</span>
-                                                    <button
-                                                        className="btn-add"
-                                                        onClick={() => {
-                                                            addTemplateMutation.mutate({
-                                                                playlistId: selectedPlaylist.id,
-                                                                templateId: template.id,
-                                                                duration: 10
-                                                            });
-                                                        }}
-                                                        disabled={addTemplateMutation.isPending}
-                                                        title="Add with default duration"
-                                                    >
-                                                        +
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                        <div className="playlist-items-panel">
-                            <h3>Playlist Items ({playlistItems?.length || 0})</h3>
-                            <div className="playlist-items">
-                                {playlistItems && playlistItems.length > 0 ? (
-                                    playlistItems.map((item, index) => (
-                                        <div key={item.id} className="playlist-item">
-                                            <GripVertical size={16} className="drag-handle" />
-                                            <span className="item-order">{index + 1}</span>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                                                {item.content_type === 'template' ? (
-                                                    <Layout size={16} style={{ color: 'var(--primary)' }} />
-                                                ) : item.file_type === 'image' ? (
-                                                    <Image size={16} />
-                                                ) : item.file_type === 'video' ? (
-                                                    <Video size={16} />
-                                                ) : null}
-                                                <span className="item-name">{item.content_name || item.name || `Item ${index + 1}`}</span>
-                                            </div>
-                                            {editingItemId === item.id ? (
-                                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="60"
-                                                        value={editingDuration}
-                                                        onChange={(e) => setEditingDuration(parseInt(e.target.value) || 5)}
-                                                        style={{ width: '50px', padding: '4px', fontSize: '12px' }}
-                                                        autoFocus
-                                                    />
-                                                    <span style={{ fontSize: '11px' }}>s</span>
-                                                    <button
-                                                        className="btn-icon"
-                                                        onClick={() => {
-                                                            updateItemDurationMutation.mutate({
-                                                                playlistId: selectedPlaylist.id,
-                                                                itemId: item.id,
-                                                                duration: editingDuration
-                                                            });
-                                                        }}
-                                                        title="Save"
-                                                        style={{ background: 'var(--primary)', color: 'white' }}
-                                                    >
-                                                        ✓
-                                                    </button>
-                                                    <button
-                                                        className="btn-icon"
-                                                        onClick={() => setEditingItemId(null)}
-                                                        title="Cancel"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <span 
-                                                        className="item-duration"
-                                                        onClick={() => {
-                                                            setEditingItemId(item.id);
-                                                            setEditingDuration(item.duration_ms / 1000);
-                                                        }}
-                                                        style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                                                        title="Click to edit duration"
-                                                    >
-                                                        {item.duration_ms / 1000}s
-                                                    </span>
-                                                    <button
-                                                        className="btn-icon"
-                                                        onClick={() => deleteItemMutation.mutate(item.id)}
-                                                        title="Remove"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="empty-state">
-                                        <p>No items in playlist. Select images and click + to add media.</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {previewPlaylist && <PlaylistPreview playlistId={previewPlaylist.id} onClose={() => setPreviewPlaylist(null)} />}
         </div>
     );
 }

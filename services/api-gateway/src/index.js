@@ -31,23 +31,23 @@ const urlencodedParser = express.urlencoded({ extended: true, limit: '200mb' });
 // Apply body parsing conditionally - skip multipart/form-data
 app.use((req, res, next) => {
   const contentType = req.headers['content-type'] || '';
-  
+
   // CRITICAL: Skip ALL body parsing for multipart/form-data
   // This allows the raw stream to pass through to the proxy
   if (contentType.includes('multipart/form-data')) {
     return next(); // Skip parsing completely
   }
-  
+
   // For JSON requests
   if (contentType.includes('application/json')) {
     return jsonParser(req, res, next);
   }
-  
+
   // For URL-encoded requests
   if (contentType.includes('application/x-www-form-urlencoded')) {
     return urlencodedParser(req, res, next);
   }
-  
+
   // For other content types, skip parsing
   next();
 });
@@ -86,7 +86,7 @@ const proxyOptions = {
   },
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
-    
+
     // For multipart/form-data, don't touch anything - let it stream naturally
     if (contentType.includes('multipart/form-data')) {
       console.log('[Gateway] Multipart request detected, streaming through untouched');
@@ -94,7 +94,7 @@ const proxyOptions = {
       // The request body will be piped automatically
       return;
     }
-    
+
     // For JSON requests, rewrite the body (only if body was parsed)
     if (req.body && Object.keys(req.body).length > 0 && typeof req.body === 'object') {
       const bodyData = JSON.stringify(req.body);
@@ -154,7 +154,7 @@ const contentProxyOptions = {
   pathRewrite: { '^/api/content': '' },
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
-    
+
     // For multipart/form-data, don't write anything - let proxy pipe the stream
     if (contentType.includes('multipart/form-data')) {
       console.log('[Gateway] Multipart upload - preserving headers, streaming body');
@@ -166,7 +166,7 @@ const contentProxyOptions = {
       // Just return and let the proxy handle streaming
       return;
     }
-    
+
     // For JSON requests, rewrite the body
     if (req.body && Object.keys(req.body).length > 0 && typeof req.body === 'object') {
       const bodyData = JSON.stringify(req.body);
@@ -221,7 +221,30 @@ app.use('/api/schedules', createProxyMiddleware({
 app.use('/api/devices', createProxyMiddleware({
   ...proxyOptions,
   target: services.device,
-  pathRewrite: { '^/api/devices': '' }
+  pathRewrite: (path, req) => {
+    // Handle /api/devices/devices -> /devices (remove duplicate)
+    if (path.startsWith('/api/devices/devices')) {
+      return path.replace('/api/devices/devices', '/devices');
+    }
+    // Handle /api/devices/properties -> /properties
+    if (path.startsWith('/api/devices/properties')) {
+      return path.replace('/api/devices/properties', '/properties');
+    }
+    // Handle /api/devices/all-zones -> /all-zones
+    if (path.startsWith('/api/devices/all-zones')) {
+      return path.replace('/api/devices/all-zones', '/all-zones');
+    }
+    // Handle /api/devices/zones -> /zones
+    if (path.startsWith('/api/devices/zones')) {
+      return path.replace('/api/devices/zones', '/zones');
+    }
+    // Handle /api/devices/pairing -> /pairing
+    if (path.startsWith('/api/devices/pairing')) {
+      return path.replace('/api/devices/pairing', '/pairing');
+    }
+    // Default: /api/devices -> /devices
+    return path.replace('/api/devices', '/devices');
+  }
 }));
 
 // Analytics routes

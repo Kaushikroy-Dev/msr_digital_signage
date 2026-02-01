@@ -105,8 +105,10 @@ app.get('/devices', authenticateToken, async (req, res) => {
 
         query += ` ORDER BY d.created_at DESC`;
 
+        console.log('[DeviceService] Fetching devices with query:', { role, userId, tenantId, zoneId, propertyId });
         const result = await pool.query(query, params);
-        
+        console.log(`[DeviceService] Found ${result.rows.length} devices`);
+
         // Transform snake_case to camelCase and ensure status is accurate
         const devices = result.rows.map(device => ({
             ...device,
@@ -120,11 +122,11 @@ app.get('/devices', authenticateToken, async (req, res) => {
             propertyName: device.property_name,
             zoneName: device.zone_name
         }));
-        
+
         res.json({ devices });
     } catch (error) {
-        console.error('Get devices error:', error);
-        res.status(500).json({ error: 'Failed to fetch devices' });
+        console.error('[DeviceService] Get devices error:', error);
+        res.status(500).json({ error: 'Failed to fetch devices', details: error.message });
     }
 });
 

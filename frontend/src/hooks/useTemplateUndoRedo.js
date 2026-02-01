@@ -5,14 +5,17 @@ export function useTemplateUndoRedo(initialZones) {
     const [historyIndex, setHistoryIndex] = useState(0);
     const prevZonesRef = useRef(initialZones);
 
+    const isInitializedRef = useRef(false);
+
     // Update history when initialZones changes (e.g., when loading a template)
     useEffect(() => {
         const currentZones = Array.isArray(initialZones) ? initialZones : [];
-        // Only reset history if zones actually changed (not just a reference change)
-        if (JSON.stringify(prevZonesRef.current) !== JSON.stringify(currentZones)) {
+        // Only reset history if this is the first initialization and we have zones
+        if (!isInitializedRef.current && currentZones.length > 0) {
             setHistory([currentZones]);
             setHistoryIndex(0);
             prevZonesRef.current = currentZones;
+            isInitializedRef.current = true;
         }
     }, [initialZones]);
 

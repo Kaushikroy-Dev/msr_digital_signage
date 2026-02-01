@@ -68,6 +68,11 @@ services:
       - DATABASE_HOST=postgres
       - REDIS_HOST=redis
       - RABBITMQ_HOST=rabbitmq
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - CONTENT_SERVICE_URL=http://content-service:3002
+      - TEMPLATE_SERVICE_URL=http://template-service:3003
+      - SCHEDULING_SERVICE_URL=http://scheduling-service:3004
+      - DEVICE_SERVICE_URL=http://device-service:3005
     depends_on:
       postgres:
         condition: service_healthy

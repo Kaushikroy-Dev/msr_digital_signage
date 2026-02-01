@@ -91,97 +91,157 @@ export default function DevicePlayer() {
         refetchInterval: 60000
     });
 
-    // WebSocket for real-time commands
+    // WebSocket for real-time commands with auto-reconnect
     useEffect(() => {
         if (!deviceId) return;
 
-        const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:3000/ws`;
-        const ws = new WebSocket(wsUrl);
+        let ws = null;
+        let reconnectAttempts = 0;
+        let reconnectTimeout = null;
+        const maxReconnectDelay = 30000; // 30 seconds max
+        const baseReconnectDelay = 1000; // Start with 1 second
 
-        ws.onopen = () => {
-            console.log('Connected to Gateway WS');
-            ws.send(JSON.stringify({ type: 'register', deviceId }));
-        };
+        const connect = () => {
+            // Use environment variable with fallback, consistent with API client
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const wsUrl = apiUrl.replace(/^http/, 'ws').replace(/^https/, 'wss') + '/ws';
+            console.log('[Player] Connecting to WebSocket:', wsUrl);
 
-        ws.onmessage = (event) => {
             try {
-                const data = JSON.parse(event.data);
-                console.log('WS Message received:', data);
+                ws = new WebSocket(wsUrl);
 
-                if (data.type === 'command') {
-                    switch (data.command) {
-                        case 'reboot':
-                            console.log('Rebooting player...');
-                            window.location.reload();
-                            break;
-                        case 'screen_off':
-                            console.log('Turning screen off (stopping playback)...');
-                            setIsPlaying(false);
-                            // Update device status in backend
-                            if (deviceId) {
-                                api.post(`/devices/${deviceId}/heartbeat`, {
-                                    isPlaying: false,
-                                    cpuUsage: 0,
-                                    memoryUsage: 0,
-                                    networkStatus: 'online'
-                                }).catch(err => console.error('Failed to update device status:', err));
+                ws.onopen = () => {
+                    console.log('[Player] Connected to Gateway WS');
+                    reconnectAttempts = 0; // Reset on successful connection
+                    ws.send(JSON.stringify({ type: 'register', deviceId }));
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('[Player] WS Message received:', data);
+
+                        if (data.type === 'command') {
+                            console.log(`[Player] Executing command: ${data.command}`);
+
+                            switch (data.command) {
+                                case 'reboot':
+                                    console.log('[Player] Rebooting player...');
+                                    // Send acknowledgment before reboot
+                                    ws.send(JSON.stringify({
+                                        type: 'command_ack',
+                                        command: 'reboot',
+                                        deviceId
+                                    }));
+                                    setTimeout(() => window.location.reload(), 500);
+                                    break;
+
+                                case 'screen_off':
+                                    console.log('[Player] Turning screen off (stopping playback)...');
+                                    setIsPlaying(false);
+                                    // Send acknowledgment
+                                    ws.send(JSON.stringify({
+                                        type: 'command_ack',
+                                        command: 'screen_off',
+                                        deviceId
+                                    }));
+                                    break;
+
+                                case 'screen_on':
+                                    console.log('[Player] Turning screen on (resuming playback)...');
+                                    setIsPlaying(true);
+                                    // Send acknowledgment
+                                    ws.send(JSON.stringify({
+                                        type: 'command_ack',
+                                        command: 'screen_on',
+                                        deviceId
+                                    }));
+                                    break;
+
+                                case 'clear_cache':
+                                    console.log('[Player] Clearing cache and reloading...');
+                                    ws.send(JSON.stringify({
+                                        type: 'command_ack',
+                                        command: 'clear_cache',
+                                        deviceId
+                                    }));
+                                    localStorage.clear();
+                                    setTimeout(() => window.location.reload(), 500);
+                                    break;
+
+                                case 'refresh':
+                                    console.log('[Player] Refreshing content...');
+                                    refetch();
+                                    ws.send(JSON.stringify({
+                                        type: 'command_ack',
+                                        command: 'refresh',
+                                        deviceId
+                                    }));
+                                    break;
+
+                                default:
+                                    console.log('[Player] Unknown command:', data.command);
                             }
-                            break;
-                        case 'screen_on':
-                            console.log('Turning screen on (resuming playback)...');
-                            setIsPlaying(true);
-                            // Update device status in backend
-                            if (deviceId) {
-                                api.post(`/devices/${deviceId}/heartbeat`, {
-                                    isPlaying: true,
-                                    cpuUsage: 0,
-                                    memoryUsage: 0,
-                                    networkStatus: 'online'
-                                }).catch(err => console.error('Failed to update device status:', err));
-                            }
-                            break;
-                        case 'clear_cache':
-                            console.log('Clearing cache and reloading...');
-                            localStorage.clear();
-                            window.location.reload();
-                            break;
-                        case 'refresh':
-                            console.log('Refreshing content...');
-                            refetch();
-                            break;
-                        default:
-                            console.log('Unknown command:', data.command);
+                        }
+                    } catch (err) {
+                        console.error('[Player] WS parse error:', err);
                     }
-                }
-            } catch (err) {
-                console.error('WS parse error:', err);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('[Player] WebSocket error:', error);
+                };
+
+                ws.onclose = () => {
+                    console.log('[Player] Disconnected from Gateway WS');
+
+                    // Calculate exponential backoff delay
+                    const delay = Math.min(
+                        baseReconnectDelay * Math.pow(2, reconnectAttempts),
+                        maxReconnectDelay
+                    );
+
+                    reconnectAttempts++;
+                    console.log(`[Player] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})...`);
+
+                    reconnectTimeout = setTimeout(() => {
+                        connect();
+                    }, delay);
+                };
+            } catch (error) {
+                console.error('[Player] Failed to create WebSocket:', error);
+                // Retry connection
+                reconnectTimeout = setTimeout(() => {
+                    connect();
+                }, baseReconnectDelay);
             }
         };
 
-        ws.onclose = () => {
-            console.log('Disconnected from Gateway WS. Retrying in 5s...');
-            setTimeout(() => {
-                // This will trigger a re-run of the effect
-                if (deviceId) setPairingCode(prev => prev); // Hack to trigger re-render if needed
-            }, 5000);
-        };
+        connect();
 
-        return () => ws.close();
+        return () => {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+            if (ws) {
+                ws.close();
+            }
+        };
     }, [deviceId, refetch]);
 
     // Initialize platform-specific features
     useEffect(() => {
         const platform = detectPlatform();
-        
+
         // Initialize error handling
         initErrorHandling();
-        
+
         // Initialize platform optimizations
         initOptimizations();
-        
+
         // Initialize TV remote control
         initTVRemote();
-        
+
         if (platform === 'tizen') {
             initTizen();
             initTizenRemote();
@@ -217,11 +277,11 @@ export default function DevicePlayer() {
                 initKioskMode();
             }
         }
-        
+
         log.info('Platform initialized', { platform });
     }, []);
 
-    // Heartbeat reporting
+    // Heartbeat reporting with isPlaying state
     useEffect(() => {
         if (!deviceId) return;
 
@@ -233,15 +293,16 @@ export default function DevicePlayer() {
                     networkStatus: 'online',
                     isPlaying: isPlaying
                 });
+                console.log(`[Player] Heartbeat sent - isPlaying: ${isPlaying}`);
             } catch (err) {
-                console.error('Heartbeat failed:', err);
+                console.error('[Player] Heartbeat failed:', err);
             }
         };
 
         sendHeartbeat(); // Initial
         const interval = setInterval(sendHeartbeat, 30000);
         return () => clearInterval(interval);
-    }, [deviceId]);
+    }, [deviceId, isPlaying]); // Added isPlaying dependency
 
     // Auto-play on initial content load, but don't override remote screen-off later
     useEffect(() => {
@@ -269,7 +330,7 @@ export default function DevicePlayer() {
                         </div>
                         <h1>Registration Error</h1>
                         <p style={{ color: '#ef4444', marginBottom: '24px' }}>{pairingError}</p>
-                        <button 
+                        <button
                             onClick={() => {
                                 setPairingError(null);
                                 setPairingCode(null);
@@ -290,7 +351,7 @@ export default function DevicePlayer() {
                 </div>
             );
         }
-        
+
         if (pairingCode) {
             const formattedCode = `${pairingCode.slice(0, 4)}-${pairingCode.slice(4)}`;
             return (
@@ -313,7 +374,7 @@ export default function DevicePlayer() {
                             <span>Waiting for pairing...</span>
                         </div>
                         <p className="device-info-hint">Device ID: {navigator.userAgent.slice(0, 20)}...</p>
-                        <button 
+                        <button
                             onClick={() => {
                                 localStorage.removeItem('ds_device_id');
                                 setPairingCode(null);
@@ -335,7 +396,7 @@ export default function DevicePlayer() {
                 </div>
             );
         }
-        
+
         // Loading state
         return (
             <div className="device-pairing-container">
