@@ -1,19 +1,19 @@
-FROM node:18-alpine
+FROM node:18-slim
 
 # Install dependencies for sharp
-RUN apk add --no-cache \
-    build-base \
-    g++ \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    giflib-dev
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --production
+# Install dependencies and rebuild sharp for the correct platform
+RUN npm install --production && \
+    npm rebuild sharp
 
 COPY . .
 
