@@ -12,15 +12,19 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Remove sharp from node_modules if it exists (to force reinstall)
-RUN rm -rf node_modules/sharp || true
+# Remove any existing node_modules to ensure clean install
+RUN rm -rf node_modules package-lock.json || true
 
-# Install all dependencies first (including dev dependencies for build)
-RUN npm install
+# Install dependencies (including optional dependencies for sharp)
+RUN npm install --include=optional
 
-# Rebuild sharp for the correct platform (linux glibc x64)
-RUN npm rebuild sharp --platform=linux --arch=x64 --libc=glibc || \
+# Force reinstall sharp for the correct platform
+RUN npm uninstall sharp || true && \
     npm install --platform=linux --arch=x64 --libc=glibc sharp
+
+# Verify sharp installation
+RUN node -e "require('sharp'); console.log('Sharp loaded successfully')" || \
+    (npm rebuild sharp && node -e "require('sharp'); console.log('Sharp rebuilt successfully')")
 
 # Remove dev dependencies to reduce image size
 RUN npm prune --production
