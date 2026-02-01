@@ -66,10 +66,20 @@ app.get('/devices', authenticateToken, async (req, res) => {
         const { role, userId } = req.user;
 
         let query = `
-            SELECT d.*, z.name as zone_name, p.name as property_name
+            SELECT 
+                d.*,
+                z.name as zone_name, 
+                p.name as property_name,
+                COALESCE(d.is_playing, false) as is_playing,
+                CASE 
+                    WHEN d.last_heartbeat IS NULL THEN 'offline'
+                    WHEN d.last_heartbeat > NOW() - INTERVAL '2 minutes' THEN 'online'
+                    WHEN d.last_heartbeat > NOW() - INTERVAL '5 minutes' THEN 'online'
+                    ELSE 'offline'
+                END as calculated_status
             FROM public.devices d
-            LEFT JOIN zones z ON d.zone_id = z.id
-            LEFT JOIN properties p ON z.property_id = p.id
+            LEFT JOIN public.zones z ON d.zone_id = z.id
+            LEFT JOIN public.properties p ON z.property_id = p.id
             WHERE p.tenant_id = $1
         `;
         let params = [tenantId || req.user.tenantId];
@@ -96,7 +106,22 @@ app.get('/devices', authenticateToken, async (req, res) => {
         query += ` ORDER BY d.created_at DESC`;
 
         const result = await pool.query(query, params);
-        res.json({ devices: result.rows });
+        
+        // Transform snake_case to camelCase and ensure status is accurate
+        const devices = result.rows.map(device => ({
+            ...device,
+            status: device.calculated_status || device.status || 'offline',
+            isPlaying: device.is_playing !== null ? device.is_playing : false,
+            is_playing: device.is_playing !== null ? device.is_playing : false,
+            lastHeartbeat: device.last_heartbeat,
+            deviceName: device.device_name,
+            deviceCode: device.device_code,
+            zoneId: device.zone_id,
+            propertyName: device.property_name,
+            zoneName: device.zone_name
+        }));
+        
+        res.json({ devices });
     } catch (error) {
         console.error('Get devices error:', error);
         res.status(500).json({ error: 'Failed to fetch devices' });
@@ -458,7 +483,7 @@ app.post('/devices/:id/heartbeat', async (req, res) => {
 
         // 1. Update device status, last_heartbeat and is_playing
         await pool.query(
-            `UPDATE devices 
+            `UPDATE public.devices 
              SET status = 'online', last_heartbeat = NOW(), is_playing = $2, updated_at = NOW()
              WHERE id = $1`,
             [id, isPlaying !== undefined ? isPlaying : true]

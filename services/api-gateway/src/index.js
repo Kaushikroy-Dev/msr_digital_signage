@@ -110,20 +110,28 @@ const proxyOptions = {
       console.log(`[Gateway] Body:`, JSON.stringify(req.body));
 
       // Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
-      const match = requestPath.match(/\/(?:api\/)?devices\/([^/]+)\/commands/);
+      // Also handle /devices/devices/:id/commands (legacy path)
+      const match = requestPath.match(/\/(?:api\/)?devices(?:\/devices)?\/([^/]+)\/commands/);
       const deviceId = match ? match[1] : null;
-      const { commandType } = req.body;
+      const { commandType } = req.body || {};
 
       console.log(`[Gateway] Match Result: ${match ? 'Match found' : 'No match'}`);
       console.log(`[Gateway] Extracted DeviceID: ${deviceId}, CommandType: ${commandType}`);
+      console.log(`[Gateway] Connected devices:`, Array.from(clients.keys()));
 
       if (deviceId && commandType) {
-        const sent = sendToDevice(deviceId, {
-          type: 'command',
-          command: commandType,
-          timestamp: Date.now()
-        });
-        console.log(`[Gateway] Broadcast status for ${deviceId}: ${sent ? 'SUCCESS' : 'FAILED (Device not connected via WS)'}`);
+        // Use setTimeout to ensure the command is sent after the response
+        setTimeout(() => {
+          const sent = sendToDevice(deviceId, {
+            type: 'command',
+            command: commandType,
+            timestamp: Date.now()
+          });
+          console.log(`[Gateway] Broadcast status for ${deviceId}: ${sent ? 'SUCCESS' : 'FAILED (Device not connected via WS)'}`);
+          if (!sent) {
+            console.log(`[Gateway] Device ${deviceId} is not connected. Available devices:`, Array.from(clients.keys()));
+          }
+        }, 100);
       } else {
         console.log(`[Gateway] Skipping broadcast: Missing deviceId (${deviceId}) or commandType (${commandType})`);
       }

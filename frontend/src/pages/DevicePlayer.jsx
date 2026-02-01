@@ -117,10 +117,28 @@ export default function DevicePlayer() {
                         case 'screen_off':
                             console.log('Turning screen off (stopping playback)...');
                             setIsPlaying(false);
+                            // Update device status in backend
+                            if (deviceId) {
+                                api.post(`/devices/${deviceId}/heartbeat`, {
+                                    isPlaying: false,
+                                    cpuUsage: 0,
+                                    memoryUsage: 0,
+                                    networkStatus: 'online'
+                                }).catch(err => console.error('Failed to update device status:', err));
+                            }
                             break;
                         case 'screen_on':
                             console.log('Turning screen on (resuming playback)...');
                             setIsPlaying(true);
+                            // Update device status in backend
+                            if (deviceId) {
+                                api.post(`/devices/${deviceId}/heartbeat`, {
+                                    isPlaying: true,
+                                    cpuUsage: 0,
+                                    memoryUsage: 0,
+                                    networkStatus: 'online'
+                                }).catch(err => console.error('Failed to update device status:', err));
+                            }
                             break;
                         case 'clear_cache':
                             console.log('Clearing cache and reloading...');
@@ -209,7 +227,7 @@ export default function DevicePlayer() {
 
         const sendHeartbeat = async () => {
             try {
-                await api.post(`/devices/devices/${deviceId}/heartbeat`, {
+                await api.post(`/devices/${deviceId}/heartbeat`, {
                     cpuUsage: Math.random() * 20 + 5, // Simulation
                     memoryUsage: Math.random() * 30 + 40,
                     networkStatus: 'online',

@@ -13,7 +13,7 @@ export default function Devices() {
     const { data: devices } = useQuery({
         queryKey: ['devices', user?.tenantId],
         queryFn: async () => {
-            const response = await api.get('/devices/devices', {
+            const response = await api.get('/devices', {
                 params: { tenantId: user?.tenantId }
             });
             return response.data.devices;
@@ -25,16 +25,20 @@ export default function Devices() {
     // Send command mutation
     const commandMutation = useMutation({
         mutationFn: async ({ deviceId, commandType }) => {
-            const response = await api.post(`/devices/devices/${deviceId}/commands`, {
+            const response = await api.post(`/devices/${deviceId}/commands`, {
                 commandType,
                 userId: user.id
             });
             return response.data;
         },
         onSuccess: (data, variables) => {
-            // No need to invalidate, WS will handle real-time state if needed
-            // but for UI feedback we can show a toast or similar
+            // Invalidate devices query to refresh status
+            queryClient.invalidateQueries(['devices']);
             console.log(`Command ${variables.commandType} sent successfully`);
+        },
+        onError: (error) => {
+            console.error('Command error:', error);
+            alert(error.response?.data?.error || `Failed to send ${variables?.commandType || 'command'}`);
         }
     });
 
@@ -113,7 +117,7 @@ export default function Devices() {
     // Register mutation
     const registerMutation = useMutation({
         mutationFn: async (data) => {
-            const response = await api.post('/devices/devices', data);
+            const response = await api.post('/devices', data);
             return response.data;
         },
         onSuccess: () => {
@@ -372,7 +376,7 @@ export default function Devices() {
                                 <div className={`status-dot ${device.status}`} style={{ background: getStatusColor(device.status) }}></div>
                                 <span className="status-label">
                                     {device.status}
-                                    {device.status === 'online' && !device.is_playing && <small style={{ display: 'block', opacity: 0.7 }}>(Paused)</small>}
+                                    {device.status === 'online' && !(device.is_playing || device.isPlaying) && <small style={{ display: 'block', opacity: 0.7 }}>(Paused)</small>}
                                 </span>
                             </div>
                         </div>
@@ -398,10 +402,10 @@ export default function Devices() {
                             <div className="health-metrics">
                                 <div className="metric">
                                     <Activity size={12} />
-                                    <span>{device.last_heartbeat ? 'Active' : 'Never Seen'}</span>
+                                    <span>{(device.last_heartbeat || device.lastHeartbeat) ? 'Active' : 'Never Seen'}</span>
                                 </div>
                                 <div className="last-seen">
-                                    {device.last_heartbeat ? new Date(device.last_heartbeat).toLocaleTimeString() : '--:--'}
+                                    {(device.last_heartbeat || device.lastHeartbeat) ? new Date(device.last_heartbeat || device.lastHeartbeat).toLocaleTimeString() : '--:--'}
                                 </div>
                             </div>
                         </div>
@@ -418,11 +422,11 @@ export default function Devices() {
                                 </button>
                                 <button
                                     className={`icon-btn tooltip ${commandMutation.isPending && commandMutation.variables?.deviceId === device.id ? 'loading' : ''}`}
-                                    onClick={() => handleCommand(device.id, device.is_playing ? 'screen_off' : 'screen_on')}
+                                    onClick={() => handleCommand(device.id, (device.is_playing || device.isPlaying) ? 'screen_off' : 'screen_on')}
                                     disabled={commandMutation.isPending}
-                                    data-tooltip={device.is_playing ? "Turn Screen OFF" : "Turn Screen ON"}
+                                    data-tooltip={(device.is_playing || device.isPlaying) ? "Turn Screen OFF" : "Turn Screen ON"}
                                 >
-                                    <Power size={16} color={device.is_playing ? '#10b981' : '#ef4444'} />
+                                    <Power size={16} color={(device.is_playing || device.isPlaying) ? '#10b981' : '#ef4444'} />
                                 </button>
                                 {user?.role !== 'zone_admin' && (
                                     <button
