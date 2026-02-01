@@ -1,9 +1,10 @@
 FROM node:18
 
-# Install dependencies for sharp
+# Install dependencies for building sharp from source
 RUN apt-get update && apt-get install -y \
     build-essential \
     python3 \
+    pkg-config \
     libvips-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -12,23 +13,25 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Remove any existing node_modules to ensure clean install
+# Remove any existing node_modules
 RUN rm -rf node_modules package-lock.json || true
 
-# Set npm config to install optional dependencies
-RUN npm config set optional true
+# Set environment to build sharp from source
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
+ENV npm_config_sharp_binary_host=""
+ENV npm_config_sharp_libvips_binary_host=""
 
 # Install dependencies
 RUN npm install
 
-# Remove sharp completely and reinstall for correct platform
+# Remove sharp and rebuild from source
 RUN npm uninstall sharp || true
 
-# Install sharp with explicit platform (linux glibc)
-RUN npm install sharp --platform=linux --arch=x64
+# Install sharp and force build from source
+RUN npm install sharp --build-from-source
 
-# Verify sharp loads correctly
-RUN node -e "const sharp = require('sharp'); console.log('✅ Sharp version:', sharp.versions); console.log('✅ Sharp loaded successfully')"
+# Verify sharp loads
+RUN node -e "const sharp = require('sharp'); console.log('✅ Sharp loaded:', sharp.versions);"
 
 # Remove dev dependencies
 RUN npm prune --production
