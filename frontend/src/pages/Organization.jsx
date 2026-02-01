@@ -23,6 +23,28 @@ export default function Organization() {
     const { user } = useAuthStore();
     const queryClient = useQueryClient();
 
+    // Check access - only super_admin and property_admin can access
+    if (user?.role !== 'super_admin' && user?.role !== 'property_admin') {
+        return (
+            <div className="access-denied" style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                minHeight: '60vh',
+                textAlign: 'center',
+                padding: '40px'
+            }}>
+                <Building2 size={48} style={{ color: '#d32f2f', marginBottom: '20px' }} />
+                <h2>Access Denied</h2>
+                <p>You don't have permission to access the Organization page.</p>
+                <p style={{ color: '#666', fontSize: '14px', marginTop: '10px' }}>
+                    This page is only available to Super Admins and Organization Admins.
+                </p>
+            </div>
+        );
+    }
+
     // UI State
     const [isAddingProperty, setIsAddingProperty] = useState(false);
     const [isAddingArea, setIsAddingArea] = useState(null);

@@ -41,12 +41,14 @@ export default function Devices() {
     // Delete device mutation
     const deleteMutation = useMutation({
         mutationFn: async (deviceId) => {
-            await api.delete(`/devices/devices/${deviceId}`);
+            await api.delete(`/devices/${deviceId}`);
         },
         onSuccess: () => {
             queryClient.invalidateQueries(['devices']);
+            alert('Device deleted successfully!');
         },
         onError: (err) => {
+            console.error('Error deleting device:', err);
             alert(err.response?.data?.error || 'Failed to delete device');
         }
     });
@@ -181,7 +183,11 @@ export default function Devices() {
         }
     };
 
-    const handleDeleteDevice = (deviceId, name) => {
+    const handleDeleteDevice = (deviceId, name, e) => {
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
         console.log(`[DevicesUI] Deletion requested for ${name} (${deviceId})`);
         // Using a non-blocking confirmation for better automation and UX
         if (window.confirm(`CRITICAL: Are you sure you want to delete "${name}"? This cannot be undone.`)) {
@@ -217,10 +223,12 @@ export default function Devices() {
                             <span className="pill-text"><b>{devices?.filter(d => d.status !== 'online').length || 0}</b> Offline</span>
                         </div>
                     </div>
-                    <button className="btn btn-primary btn-with-icon" onClick={() => { setIsRegistering(true); setRegMode('pair'); }}>
-                        <Monitor size={18} />
-                        Add Screen
-                    </button>
+                    {user?.role !== 'zone_admin' && (
+                        <button className="btn btn-primary btn-with-icon" onClick={() => { setIsRegistering(true); setRegMode('pair'); }}>
+                            <Monitor size={18} />
+                            Add Screen
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -416,14 +424,16 @@ export default function Devices() {
                                 >
                                     <Power size={16} color={device.is_playing ? '#10b981' : '#ef4444'} />
                                 </button>
-                                <button
-                                    className={`icon-btn tooltip delete ${deleteMutation.isPending && deleteMutation.variables === device.id ? 'loading' : ''}`}
-                                    onClick={() => handleDeleteDevice(device.id, device.device_name)}
-                                    disabled={deleteMutation.isPending}
-                                    data-tooltip="Delete Display"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
+                                {user?.role !== 'zone_admin' && (
+                                    <button
+                                        className={`icon-btn tooltip delete ${deleteMutation.isPending && deleteMutation.variables === device.id ? 'loading' : ''}`}
+                                        onClick={(e) => handleDeleteDevice(device.id, device.device_name, e)}
+                                        disabled={deleteMutation.isPending && deleteMutation.variables === device.id}
+                                        data-tooltip="Delete Display"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
                                 <button
                                     className="icon-btn tooltip primary"
                                     onClick={() => {
@@ -444,9 +454,11 @@ export default function Devices() {
                         <div className="empty-icon"><Monitor size={48} /></div>
                         <h3>No Displays Connected</h3>
                         <p>Pair your first hardware player or web-browser screen to get started.</p>
-                        <button className="btn btn-primary" onClick={() => setIsRegistering(true)}>
-                            Get Registration Code
-                        </button>
+                        {user?.role !== 'zone_admin' && (
+                            <button className="btn btn-primary" onClick={() => setIsRegistering(true)}>
+                                Get Registration Code
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

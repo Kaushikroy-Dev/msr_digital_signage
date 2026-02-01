@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Calendar as CalendarIcon, Clock, Edit2, Trash2, X } from 'lucide-react';
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
+import PropertyZoneSelector from '../components/PropertyZoneSelector';
 import './Scheduler.css';
 
 const DAYS_OF_WEEK = [
@@ -21,6 +22,8 @@ export default function Scheduler() {
     const [isCreating, setIsCreating] = useState(false);
     const [editingSchedule, setEditingSchedule] = useState(null);
     const [deleteConfirmSchedule, setDeleteConfirmSchedule] = useState(null);
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
+    const [selectedZoneId, setSelectedZoneId] = useState('');
     const [formData, setFormData] = useState({
         name: '',
         playlistId: '',
@@ -36,35 +39,44 @@ export default function Scheduler() {
 
     // Fetch schedules
     const { data: schedules } = useQuery({
-        queryKey: ['schedules', user?.tenantId],
+        queryKey: ['schedules', user?.tenantId, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
-            const response = await api.get('/schedules', {
-                params: { tenantId: user?.tenantId }
-            });
+            const params = { tenantId: user?.tenantId };
+            if (user?.role === 'super_admin') {
+                if (selectedPropertyId) params.propertyId = selectedPropertyId;
+                if (selectedZoneId) params.zoneId = selectedZoneId;
+            }
+            const response = await api.get('/schedules', { params });
             return response.data.schedules;
         },
         enabled: !!user?.tenantId
     });
 
-    // Fetch playlists for dropdown
+    // Fetch playlists for dropdown (filtered by property/zone)
     const { data: playlists } = useQuery({
-        queryKey: ['playlists', user?.tenantId],
+        queryKey: ['playlists', user?.tenantId, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
-            const response = await api.get('/schedules/playlists', {
-                params: { tenantId: user?.tenantId }
-            });
+            const params = { tenantId: user?.tenantId };
+            if (user?.role === 'super_admin') {
+                if (selectedPropertyId) params.propertyId = selectedPropertyId;
+                if (selectedZoneId) params.zoneId = selectedZoneId;
+            }
+            const response = await api.get('/schedules/playlists', { params });
             return response.data.playlists;
         },
         enabled: !!user?.tenantId
     });
 
-    // Fetch devices for selection
+    // Fetch devices for selection (filtered by property/zone)
     const { data: devices } = useQuery({
-        queryKey: ['devices', user?.tenantId],
+        queryKey: ['devices', user?.tenantId, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
-            const response = await api.get('/schedules/devices', {
-                params: { tenantId: user?.tenantId }
-            });
+            const params = { tenantId: user?.tenantId };
+            if (user?.role === 'super_admin') {
+                if (selectedPropertyId) params.propertyId = selectedPropertyId;
+                if (selectedZoneId) params.zoneId = selectedZoneId;
+            }
+            const response = await api.get('/schedules/devices', { params });
             return response.data.devices;
         },
         enabled: !!user?.tenantId
@@ -95,7 +107,9 @@ export default function Scheduler() {
             const response = await api.post('/schedules', {
                 ...data,
                 tenantId: user.tenantId,
-                userId: user.id
+                userId: user.id,
+                propertyId: selectedPropertyId || undefined,
+                zoneId: selectedZoneId || undefined
             });
             return response.data;
         },
@@ -110,7 +124,11 @@ export default function Scheduler() {
     // Update schedule mutation
     const updateScheduleMutation = useMutation({
         mutationFn: async ({ scheduleId, data }) => {
-            const response = await api.put(`/schedules/${scheduleId}`, data);
+            const response = await api.put(`/schedules/${scheduleId}`, {
+                ...data,
+                propertyId: selectedPropertyId || undefined,
+                zoneId: selectedZoneId || undefined
+            });
             return response.data;
         },
         onSuccess: () => {
@@ -165,6 +183,9 @@ export default function Scheduler() {
             recurrencePattern: schedule.recurrence_pattern || 'daily',
             isActive: schedule.is_active !== false
         });
+        // Set property/zone from schedule if available
+        if (schedule.property_id) setSelectedPropertyId(schedule.property_id);
+        if (schedule.zone_id) setSelectedZoneId(schedule.zone_id);
     };
 
     // Update deviceIds when assignedDevices loads
@@ -214,9 +235,21 @@ export default function Scheduler() {
                 </button>
             </div>
 
-            {isCreating && (
+            {user?.role === 'super_admin' && !isCreating && !editingSchedule && (
+                <div style={{ marginBottom: '20px' }}>
+                    <PropertyZoneSelector
+                        selectedPropertyId={selectedPropertyId}
+                        selectedZoneId={selectedZoneId}
+                        onPropertyChange={setSelectedPropertyId}
+                        onZoneChange={setSelectedZoneId}
+                        required={false}
+                    />
+                </div>
+            )}
+
+            {(isCreating || editingSchedule) && (
                 <div className="card create-schedule-card">
-                    <h2>Create New Schedule</h2>
+                    <h2>{editingSchedule ? 'Edit Schedule' : 'Create New Schedule'}</h2>
 
                     <div className="form-section">
                         <h3>Basic Information</h3>
@@ -246,6 +279,15 @@ export default function Scheduler() {
                                     ))}
                                 </select>
                             </div>
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                            <PropertyZoneSelector
+                                selectedPropertyId={selectedPropertyId}
+                                selectedZoneId={selectedZoneId}
+                                onPropertyChange={setSelectedPropertyId}
+                                onZoneChange={setSelectedZoneId}
+                                required={user?.role === 'super_admin'}
+                            />
                         </div>
                     </div>
 

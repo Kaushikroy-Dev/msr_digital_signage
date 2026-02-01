@@ -34,15 +34,104 @@ const pool = new Pool({
 // Get playlists
 app.get('/playlists', authenticateToken, async (req, res) => {
     try {
-        const { tenantId } = req.query;
+        const { tenantId, propertyId, zoneId } = req.query;
         const { role, userId } = req.user;
+        const targetTenantId = tenantId || req.user.tenantId;
 
-        // For now, playlists are tenant-wide, but we can add role-based filtering if needed
-        const result = await pool.query(
-            `SELECT * FROM playlists WHERE tenant_id = $1 ORDER BY created_at DESC`,
-            [tenantId || req.user.tenantId]
-        );
-        res.json({ playlists: result.rows });
+        let query = `SELECT * FROM playlists WHERE tenant_id = $1`;
+        const params = [targetTenantId];
+        let paramIndex = 2;
+
+        // Apply property/zone filtering based on role (same logic as media assets)
+        if (role === 'super_admin') {
+            if (propertyId) {
+                query += ` AND (property_id = $${paramIndex} OR (is_shared = true AND shared_with_properties IS NOT NULL AND $${paramIndex} = ANY(shared_with_properties)))`;
+                params.push(propertyId);
+                paramIndex++;
+            }
+            if (zoneId) {
+                query += ` AND (zone_id = $${paramIndex} OR zone_id IS NULL)`;
+                params.push(zoneId);
+                paramIndex++;
+            }
+        } else if (role === 'property_admin') {
+            query += ` AND (
+                property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${paramIndex})
+                OR (is_shared = true AND EXISTS (
+                    SELECT 1 FROM user_property_access upa 
+                    WHERE upa.user_id = $${paramIndex} 
+                    AND shared_with_properties IS NOT NULL
+                    AND upa.property_id = ANY(shared_with_properties)
+                ))
+            )`;
+            params.push(userId);
+            paramIndex++;
+            if (zoneId) {
+                query += ` AND (zone_id = $${paramIndex} OR zone_id IS NULL)`;
+                params.push(zoneId);
+                paramIndex++;
+            }
+        } else if (role === 'zone_admin') {
+            query += ` AND (
+                zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $${paramIndex})
+                OR (is_shared = true AND EXISTS (
+                    SELECT 1 FROM zones z
+                    JOIN user_zone_access uza ON z.id = uza.zone_id
+                    WHERE uza.user_id = $${paramIndex}
+                    AND shared_with_properties IS NOT NULL
+                    AND z.property_id = ANY(shared_with_properties)
+                ))
+            )`;
+            params.push(userId);
+            paramIndex++;
+        } else {
+            // content_editor
+            const propertyAccess = await pool.query(
+                'SELECT property_id FROM user_property_access WHERE user_id = $1',
+                [userId]
+            );
+            if (propertyAccess.rows.length > 0) {
+                const propertyIds = propertyAccess.rows.map(r => r.property_id);
+                query += ` AND (
+                    property_id = ANY($${paramIndex}::UUID[])
+                    OR (is_shared = true AND EXISTS (
+                        SELECT 1 FROM unnest($${paramIndex}::UUID[]) AS prop_id
+                        WHERE shared_with_properties IS NOT NULL
+                        AND prop_id = ANY(shared_with_properties)
+                    ))
+                )`;
+                params.push(propertyIds);
+                paramIndex++;
+            } else {
+                const zoneAccess = await pool.query(
+                    'SELECT zone_id FROM user_zone_access WHERE user_id = $1',
+                    [userId]
+                );
+                if (zoneAccess.rows.length > 0) {
+                    const zoneIds = zoneAccess.rows.map(r => r.zone_id);
+                    query += ` AND zone_id = ANY($${paramIndex}::UUID[])`;
+                    params.push(zoneIds);
+                    paramIndex++;
+                } else {
+                    return res.status(403).json({ error: 'No property or zone access' });
+                }
+            }
+        }
+
+        query += ` ORDER BY created_at DESC`;
+
+        const result = await pool.query(query, params);
+        
+        // Transform snake_case to camelCase for frontend consistency
+        const playlists = result.rows.map(playlist => ({
+            ...playlist,
+            sharedWithProperties: playlist.shared_with_properties || [],
+            propertyId: playlist.property_id,
+            zoneId: playlist.zone_id,
+            isShared: playlist.is_shared
+        }));
+        
+        res.json({ playlists });
     } catch (error) {
         console.error('Get playlists error:', error);
         res.status(500).json({ error: 'Failed to fetch playlists' });
@@ -52,14 +141,82 @@ app.get('/playlists', authenticateToken, async (req, res) => {
 // Create playlist
 app.post('/playlists', authenticateToken, async (req, res) => {
     try {
-        const { name, description, transitionEffect, transitionDuration } = req.body;
-        const { tenantId, userId } = req.user;
+        const { name, description, transitionEffect, transitionDuration, propertyId, zoneId } = req.body;
+        const { tenantId, userId, role } = req.user;
+
+        // Property/Zone assignment based on role (same logic as media/templates)
+        let finalPropertyId = propertyId;
+        let finalZoneId = zoneId || null;
+
+        if (role === 'super_admin') {
+            if (!propertyId) {
+                return res.status(400).json({ error: 'Property ID is required' });
+            }
+        } else if (role === 'property_admin') {
+            const propertyAccess = await pool.query(
+                'SELECT property_id FROM user_property_access WHERE user_id = $1 LIMIT 1',
+                [userId]
+            );
+            if (propertyAccess.rows.length === 0) {
+                return res.status(403).json({ error: 'No property access assigned' });
+            }
+            finalPropertyId = propertyAccess.rows[0].property_id;
+            if (!zoneId) {
+                return res.status(400).json({ error: 'Zone ID is required for property admins' });
+            }
+            const zoneCheck = await pool.query(
+                'SELECT id FROM zones WHERE id = $1 AND property_id = $2',
+                [zoneId, finalPropertyId]
+            );
+            if (zoneCheck.rows.length === 0) {
+                return res.status(403).json({ error: 'Zone does not belong to your assigned property' });
+            }
+        } else if (role === 'zone_admin') {
+            const zoneAccess = await pool.query(
+                `SELECT z.id as zone_id, z.property_id 
+                 FROM user_zone_access uza
+                 JOIN zones z ON uza.zone_id = z.id
+                 WHERE uza.user_id = $1 LIMIT 1`,
+                [userId]
+            );
+            if (zoneAccess.rows.length === 0) {
+                return res.status(403).json({ error: 'No zone access assigned' });
+            }
+            finalPropertyId = zoneAccess.rows[0].property_id;
+            finalZoneId = zoneAccess.rows[0].zone_id;
+        } else {
+            // content_editor
+            const propertyAccess = await pool.query(
+                'SELECT property_id FROM user_property_access WHERE user_id = $1 LIMIT 1',
+                [userId]
+            );
+            if (propertyAccess.rows.length > 0) {
+                finalPropertyId = propertyAccess.rows[0].property_id;
+                if (!zoneId) {
+                    return res.status(400).json({ error: 'Zone ID is required' });
+                }
+            } else {
+                const zoneAccess = await pool.query(
+                    `SELECT z.id as zone_id, z.property_id 
+                     FROM user_zone_access uza
+                     JOIN zones z ON uza.zone_id = z.id
+                     WHERE uza.user_id = $1 LIMIT 1`,
+                    [userId]
+                );
+                if (zoneAccess.rows.length > 0) {
+                    finalPropertyId = zoneAccess.rows[0].property_id;
+                    finalZoneId = zoneAccess.rows[0].zone_id;
+                } else {
+                    return res.status(403).json({ error: 'No property or zone access assigned' });
+                }
+            }
+        }
 
         const result = await pool.query(
-            `INSERT INTO playlists (tenant_id, created_by, name, description, transition_effect, transition_duration_ms)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO playlists (tenant_id, created_by, property_id, zone_id, name, description, transition_effect, transition_duration_ms, is_shared, shared_with_properties)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              RETURNING *`,
-            [tenantId, userId, name, description, transitionEffect || 'fade', transitionDuration || 1000]
+            [tenantId, userId, finalPropertyId, finalZoneId, name, description, transitionEffect || 'fade', transitionDuration || 1000, false, []]
         );
 
         res.status(201).json(result.rows[0]);
@@ -137,8 +294,9 @@ app.delete('/playlists/:id', authenticateToken, async (req, res) => {
 // Get schedules
 app.get('/schedules', authenticateToken, async (req, res) => {
     try {
-        const { tenantId } = req.query;
+        const { tenantId, propertyId, zoneId } = req.query;
         const { role, userId } = req.user;
+        const targetTenantId = tenantId || req.user.tenantId;
 
         let query = `
             SELECT DISTINCT s.*, p.name as playlist_name 
@@ -147,21 +305,43 @@ app.get('/schedules', authenticateToken, async (req, res) => {
             LEFT JOIN schedule_devices sd ON s.id = sd.schedule_id
             WHERE s.tenant_id = $1
         `;
-        let params = [tenantId || req.user.tenantId];
+        let params = [targetTenantId];
+        let paramIndex = 2;
 
-        if (role === 'property_admin') {
+        // Apply property/zone filtering based on role
+        if (role === 'super_admin') {
+            if (propertyId) {
+                query += ` AND (s.property_id = $${paramIndex} OR sd.property_id = $${paramIndex})`;
+                params.push(propertyId);
+                paramIndex++;
+            }
+            if (zoneId) {
+                query += ` AND (s.zone_id = $${paramIndex} OR s.zone_id IS NULL OR sd.zone_id = $${paramIndex})`;
+                params.push(zoneId);
+                paramIndex++;
+            }
+        } else if (role === 'property_admin') {
             query += ` AND (
-                sd.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $2)
-                OR sd.zone_id IN (SELECT z.id FROM zones z WHERE z.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $2))
-                OR sd.device_id IN (SELECT d.id FROM devices d JOIN zones z ON d.zone_id = z.id WHERE z.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $2))
+                s.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${paramIndex})
+                OR sd.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${paramIndex})
+                OR sd.zone_id IN (SELECT z.id FROM zones z WHERE z.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${paramIndex}))
+                OR sd.device_id IN (SELECT d.id FROM devices d JOIN zones z ON d.zone_id = z.id WHERE z.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${paramIndex}))
             )`;
             params.push(userId);
+            paramIndex++;
+            if (zoneId) {
+                query += ` AND (s.zone_id = $${paramIndex} OR s.zone_id IS NULL OR sd.zone_id = $${paramIndex})`;
+                params.push(zoneId);
+                paramIndex++;
+            }
         } else if (role === 'zone_admin') {
             query += ` AND (
-                sd.zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $2)
-                OR sd.device_id IN (SELECT d.id FROM devices d WHERE d.zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $2))
+                s.zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $${paramIndex})
+                OR sd.zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $${paramIndex})
+                OR sd.device_id IN (SELECT d.id FROM devices d WHERE d.zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $${paramIndex}))
             )`;
             params.push(userId);
+            paramIndex++;
         }
 
         query += ` ORDER BY s.created_at DESC`;
@@ -178,8 +358,41 @@ app.get('/schedules', authenticateToken, async (req, res) => {
 app.post('/schedules', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
-        const { name, playlistId, startDate, endDate, startTime, endTime, daysOfWeek, recurrencePattern, deviceIds } = req.body;
+        const { name, playlistId, startDate, endDate, startTime, endTime, daysOfWeek, recurrencePattern, deviceIds, propertyId, zoneId } = req.body;
         const { tenantId, userId, role } = req.user;
+
+        // Property/Zone assignment based on role
+        let finalPropertyId = propertyId;
+        let finalZoneId = zoneId || null;
+
+        if (role === 'super_admin') {
+            if (!propertyId) {
+                return res.status(400).json({ error: 'Property ID is required' });
+            }
+        } else if (role === 'property_admin') {
+            const propertyAccess = await client.query(
+                'SELECT property_id FROM user_property_access WHERE user_id = $1 LIMIT 1',
+                [userId]
+            );
+            if (propertyAccess.rows.length === 0) {
+                return res.status(403).json({ error: 'No property access assigned' });
+            }
+            finalPropertyId = propertyAccess.rows[0].property_id;
+            // Zone is optional for schedules
+        } else if (role === 'zone_admin') {
+            const zoneAccess = await client.query(
+                `SELECT z.id as zone_id, z.property_id 
+                 FROM user_zone_access uza
+                 JOIN zones z ON uza.zone_id = z.id
+                 WHERE uza.user_id = $1 LIMIT 1`,
+                [userId]
+            );
+            if (zoneAccess.rows.length === 0) {
+                return res.status(403).json({ error: 'No zone access assigned' });
+            }
+            finalPropertyId = zoneAccess.rows[0].property_id;
+            finalZoneId = zoneAccess.rows[0].zone_id;
+        }
 
         // RBAC: Verify access to devices
         if (role !== 'super_admin' && deviceIds && deviceIds.length > 0) {
@@ -214,10 +427,10 @@ app.post('/schedules', authenticateToken, async (req, res) => {
         const cleanEndTime = endTime === '' ? null : endTime;
 
         const result = await client.query(
-            `INSERT INTO schedules (tenant_id, created_by, name, playlist_id, start_date, end_date, start_time, end_time, days_of_week, recurrence_pattern)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO schedules (tenant_id, created_by, property_id, zone_id, name, playlist_id, start_date, end_date, start_time, end_time, days_of_week, recurrence_pattern)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING *`,
-            [tenantId, userId, name, playlistId, cleanStartDate, cleanEndDate, cleanStartTime, cleanEndTime, daysOfWeek, recurrencePattern]
+            [tenantId, userId, finalPropertyId, finalZoneId, name, playlistId, cleanStartDate, cleanEndDate, cleanStartTime, cleanEndTime, daysOfWeek, recurrencePattern]
         );
 
         const scheduleId = result.rows[0].id;
@@ -384,9 +597,16 @@ app.get('/playlists/:id/items', async (req, res) => {
                 ma.original_name as content_name,
                 ma.file_type,
                 ma.storage_path,
-                ma.thumbnail_path
+                ma.thumbnail_path,
+                t.name as template_name,
+                t.width as template_width,
+                t.height as template_height,
+                t.zones as template_zones,
+                t.background_color as template_background_color,
+                t.background_image_id as template_background_image_id
              FROM playlist_items pi
              LEFT JOIN media_assets ma ON pi.media_asset_id = ma.id AND pi.content_type = 'media'
+             LEFT JOIN templates t ON pi.template_id = t.id AND pi.content_type = 'template'
              WHERE pi.playlist_id = $1 
              ORDER BY pi.sequence_order ASC`,
             [id]
@@ -398,13 +618,24 @@ app.get('/playlists/:id/items', async (req, res) => {
             playlist_id: item.playlist_id,
             content_type: item.content_type,
             content_id: item.media_asset_id || item.template_id,
-            content_name: item.content_name,
+            content_name: item.content_name || item.template_name || 'Untitled',
             file_type: item.file_type,
             url: item.storage_path ? `/uploads/${item.storage_path}` : null,
-            thumbnail_url: item.thumbnail_path ? `/uploads/thumbnails/${path.basename(item.thumbnail_path)}` : null,
+            thumbnail_url: item.thumbnail_path ? `/uploads/${item.thumbnail_path.split('/').slice(-2).join('/')}` : null,
             duration_ms: item.duration_seconds * 1000,
+            duration_seconds: item.duration_seconds,
             order_index: item.sequence_order,
-            created_at: item.created_at
+            created_at: item.created_at,
+            // Template data
+            template: item.content_type === 'template' ? {
+                id: item.template_id,
+                name: item.template_name,
+                width: item.template_width,
+                height: item.template_height,
+                zones: item.template_zones,
+                background_color: item.template_background_color,
+                background_image_id: item.template_background_image_id
+            } : null
         }));
 
         res.json({ items });
@@ -415,7 +646,7 @@ app.get('/playlists/:id/items', async (req, res) => {
 });
 
 // Add item to playlist
-app.post('/playlists/:id/items', async (req, res) => {
+app.post('/playlists/:id/items', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         const { contentType, contentId, duration, tenantId } = req.body;
@@ -543,7 +774,7 @@ app.post('/playlists/:playlistId/assign-devices', authenticateToken, async (req,
 
         // Check if playlist exists and belongs to tenant
         const playlistCheck = await client.query(
-            'SELECT id FROM playlists WHERE id = $1 AND tenant_id = $2',
+            'SELECT id, property_id, zone_id, name FROM playlists WHERE id = $1 AND tenant_id = $2',
             [playlistId, tenantId]
         );
 
@@ -552,12 +783,16 @@ app.post('/playlists/:playlistId/assign-devices', authenticateToken, async (req,
             return res.status(404).json({ error: 'Playlist not found' });
         }
 
+        // Get playlist property/zone for the schedule
+        const playlistPropertyId = playlistCheck.rows[0].property_id;
+        const playlistZoneId = playlistCheck.rows[0].zone_id;
+
         // Create a default always-on schedule for this playlist
         const scheduleResult = await client.query(
-            `INSERT INTO schedules (tenant_id, created_by, name, playlist_id, is_active)
-             VALUES ($1, $2, $3, $4, true)
+            `INSERT INTO schedules (tenant_id, created_by, property_id, zone_id, name, playlist_id, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, true)
              RETURNING id`,
-            [tenantId, userId, `Auto: ${playlistCheck.rows[0].name || 'Playlist'}`, playlistId]
+            [tenantId, userId, playlistPropertyId, playlistZoneId, `Auto: ${playlistCheck.rows[0].name || 'Playlist'}`, playlistId]
         );
 
         const scheduleId = scheduleResult.rows[0].id;
@@ -792,6 +1027,134 @@ app.get('/player/:deviceId/content', async (req, res) => {
     } catch (error) {
         console.error('Get player content error:', error);
         res.status(500).json({ error: 'Failed to fetch player content' });
+    }
+});
+
+// Share playlist with other properties
+app.post('/playlists/:id/share', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { propertyIds } = req.body;
+        const { role, userId } = req.user;
+
+        if (role !== 'super_admin') {
+            return res.status(403).json({ error: 'Only super admins can share content' });
+        }
+
+        if (!Array.isArray(propertyIds) || propertyIds.length === 0) {
+            return res.status(400).json({ error: 'propertyIds array is required' });
+        }
+
+        const playlistCheck = await pool.query(
+            'SELECT id, tenant_id FROM playlists WHERE id = $1',
+            [id]
+        );
+
+        if (playlistCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Playlist not found' });
+        }
+
+        if (playlistCheck.rows[0].tenant_id !== req.user.tenantId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const propertyCheck = await pool.query(
+            'SELECT id FROM properties WHERE id = ANY($1::UUID[]) AND tenant_id = $2',
+            [propertyIds, req.user.tenantId]
+        );
+
+        if (propertyCheck.rows.length !== propertyIds.length) {
+            return res.status(400).json({ error: 'One or more properties not found or belong to different tenant' });
+        }
+
+        await pool.query(
+            `UPDATE playlists 
+             SET is_shared = true, shared_with_properties = $1
+             WHERE id = $2`,
+            [propertyIds, id]
+        );
+
+        res.json({ message: 'Playlist shared successfully', propertyIds });
+    } catch (error) {
+        console.error('Share playlist error:', error);
+        res.status(500).json({ error: 'Failed to share playlist' });
+    }
+});
+
+// Unshare playlist from all properties
+app.delete('/playlists/:id/share', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role } = req.user;
+
+        if (role !== 'super_admin') {
+            return res.status(403).json({ error: 'Only super admins can unshare content' });
+        }
+
+        const playlistCheck = await pool.query(
+            'SELECT id, tenant_id FROM playlists WHERE id = $1',
+            [id]
+        );
+
+        if (playlistCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Playlist not found' });
+        }
+
+        if (playlistCheck.rows[0].tenant_id !== req.user.tenantId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        await pool.query(
+            `UPDATE playlists 
+             SET is_shared = false, shared_with_properties = ARRAY[]::UUID[]
+             WHERE id = $1`,
+            [id]
+        );
+
+        res.json({ message: 'Playlist unshared successfully' });
+    } catch (error) {
+        console.error('Unshare playlist error:', error);
+        res.status(500).json({ error: 'Failed to unshare playlist' });
+    }
+});
+
+// Unshare playlist from specific property
+app.delete('/playlists/:id/share/:propertyId', authenticateToken, async (req, res) => {
+    try {
+        const { id, propertyId } = req.params;
+        const { role } = req.user;
+
+        if (role !== 'super_admin') {
+            return res.status(403).json({ error: 'Only super admins can unshare content' });
+        }
+
+        const playlistCheck = await pool.query(
+            'SELECT id, tenant_id, shared_with_properties FROM playlists WHERE id = $1',
+            [id]
+        );
+
+        if (playlistCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Playlist not found' });
+        }
+
+        if (playlistCheck.rows[0].tenant_id !== req.user.tenantId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const currentShared = playlistCheck.rows[0].shared_with_properties || [];
+        const updatedShared = currentShared.filter(pId => pId !== propertyId);
+
+        await pool.query(
+            `UPDATE playlists 
+             SET shared_with_properties = $1, is_shared = $2
+             WHERE id = $3`,
+            [updatedShared, updatedShared.length > 0, id]
+        );
+
+        res.json({ message: 'Property removed from sharing', propertyId });
+    } catch (error) {
+        console.error('Unshare playlist from property error:', error);
+        res.status(500).json({ error: 'Failed to unshare playlist from property' });
     }
 });
 

@@ -162,10 +162,22 @@
     color: var(--text-secondary);
 }
 
-.media-delete {
+.media-actions {
     position: absolute;
     top: 8px;
     right: 8px;
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.media-card:hover .media-actions {
+    opacity: 1;
+}
+
+.media-share,
+.media-delete {
     width: 32px;
     height: 32px;
     border: none;
@@ -176,16 +188,28 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
-    transition: opacity 0.2s;
+    transition: background 0.2s;
 }
 
-.media-card:hover .media-delete {
-    opacity: 1;
+.media-share:hover {
+    background: var(--primary);
 }
 
 .media-delete:hover {
     background: var(--error);
+}
+
+.shared-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 6px;
+    background: var(--primary);
+    color: white;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
 }
 
 .loading,

@@ -1,6 +1,7 @@
+import { substituteVariables } from '../../utils/variableSubstitution';
 import './TextWidget.css';
 
-export default function TextWidget({ config = {} }) {
+export default function TextWidget({ config = {}, variableValues = {} }) {
     const {
         content = '',
         html = false,
@@ -14,7 +15,10 @@ export default function TextWidget({ config = {} }) {
         }
     } = config;
 
-    if (!content) {
+    // Substitute variables in content
+    const processedContent = substituteVariables(content, variableValues);
+
+    if (!processedContent) {
         return (
             <div className="text-widget">
                 <div className="text-empty">No text content</div>
@@ -38,9 +42,9 @@ export default function TextWidget({ config = {} }) {
     return (
         <div className="text-widget" style={widgetStyle}>
             {html ? (
-                <div dangerouslySetInnerHTML={{ __html: content }} />
+                <div dangerouslySetInnerHTML={{ __html: processedContent }} />
             ) : (
-                <div className="text-content">{content}</div>
+                <div className="text-content">{processedContent}</div>
             )}
         </div>
     );

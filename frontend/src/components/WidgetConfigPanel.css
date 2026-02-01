@@ -57,3 +57,111 @@
     color: var(--text-secondary);
     font-size: 14px;
 }
+
+.widget-config-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background: var(--background);
+    color: var(--text);
+}
+
+.widget-config-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+}
+
+.config-tab {
+    flex: 1;
+    padding: 10px 8px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.config-tab:hover {
+    color: var(--text);
+    background: var(--background);
+}
+
+.config-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.widget-config-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.widget-config-toolbar .btn {
+    flex: 1;
+    font-size: 12px;
+    padding: 6px 12px;
+}
+
+.widget-config-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.widget-preview {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--background);
+}
+
+.preview-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.preview-content {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    background: var(--surface);
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.range-value {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 40px;
+}

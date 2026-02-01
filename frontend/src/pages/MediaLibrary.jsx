@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, Image as ImageIcon, Video, FileText, Trash2, Search } from 'lucide-react';
+import { Upload, Image as ImageIcon, Video, FileText, Trash2, Search, Share2 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
+import PropertyZoneSelector from '../components/PropertyZoneSelector';
+import ContentShareModal from '../components/ContentShareModal';
 import './MediaLibrary.css';
 
 export default function MediaLibrary() {
@@ -11,13 +13,29 @@ export default function MediaLibrary() {
     const queryClient = useQueryClient();
     const [filter, setFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
+    const [selectedZoneId, setSelectedZoneId] = useState('');
+    const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [sharingAsset, setSharingAsset] = useState(null);
+
+    // Auto-select property/zone for property_admin and zone_admin
+    useEffect(() => {
+        if (user?.role === 'property_admin' || user?.role === 'zone_admin') {
+            // Property/zone will be auto-selected by PropertyZoneSelector
+            // We just need to ensure the query runs
+        }
+    }, [user?.role]);
 
     // Fetch media assets
     const { data: assets, isLoading } = useQuery({
-        queryKey: ['media-assets', user?.tenantId, filter],
+        queryKey: ['media-assets', user?.tenantId, filter, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
             const params = { tenantId: user?.tenantId };
             if (filter !== 'all') params.fileType = filter;
+            if (user?.role === 'super_admin') {
+                if (selectedPropertyId) params.propertyId = selectedPropertyId;
+                if (selectedZoneId) params.zoneId = selectedZoneId;
+            }
 
             const response = await api.get('/content/assets', { params });
             return response.data.assets;
@@ -31,7 +49,7 @@ export default function MediaLibrary() {
             if (!files || files.length === 0) {
                 throw new Error('No file selected');
             }
-            
+
             if (!user || !user.tenantId) {
                 throw new Error('User not authenticated');
             }
@@ -39,7 +57,7 @@ export default function MediaLibrary() {
             // Get auth token from zustand store
             const authStorage = localStorage.getItem('auth-storage');
             let token = null;
-            
+
             try {
                 if (authStorage) {
                     const parsed = JSON.parse(authStorage);
@@ -48,7 +66,7 @@ export default function MediaLibrary() {
             } catch (e) {
                 console.error('[Upload] Error parsing auth storage:', e);
             }
-            
+
             if (!token) {
                 throw new Error('Authentication token not found. Please log in again.');
             }
@@ -58,10 +76,42 @@ export default function MediaLibrary() {
             formData.append('tenantId', user.tenantId);
             formData.append('userId', user.id || user.userId);
 
-            // Direct connection to content service
-            const CONTENT_SERVICE_URL = import.meta.env.VITE_CONTENT_SERVICE_URL || 'http://localhost:3002';
-            const uploadUrl = `${CONTENT_SERVICE_URL}/upload`;
+            // Add property/zone for super_admin
+            if (user.role === 'super_admin') {
+                if (!selectedPropertyId || selectedPropertyId === '') {
+                    console.error('[Upload] Super admin missing propertyId:', selectedPropertyId);
+                    throw new Error('Please select a property before uploading');
+                }
+                console.log('[Upload] Appending propertyId:', selectedPropertyId);
+                formData.append('propertyId', selectedPropertyId);
+                if (selectedZoneId && selectedZoneId !== '') {
+                    console.log('[Upload] Appending zoneId:', selectedZoneId);
+                    formData.append('zoneId', selectedZoneId);
+                }
+            } else if (user.role === 'property_admin') {
+                // Property is auto-assigned, but zone needs to be provided
+                if (!selectedZoneId || selectedZoneId === '') {
+                    console.error('[Upload] Property admin missing zoneId:', selectedZoneId);
+                    throw new Error('Please select a zone before uploading');
+                }
+                console.log('[Upload] Appending zoneId for property_admin:', selectedZoneId);
+                formData.append('zoneId', selectedZoneId);
+            }
+            // zone_admin and content_editor will have property/zone auto-assigned by backend
             
+            console.log('[Upload] FormData contents:', {
+                hasFile: files[0] ? true : false,
+                fileName: files[0]?.name,
+                tenantId: user.tenantId,
+                userId: user.id || user.userId,
+                propertyId: user.role === 'super_admin' ? selectedPropertyId : 'auto-assigned',
+                zoneId: user.role === 'super_admin' ? selectedZoneId : (user.role === 'property_admin' ? selectedZoneId : 'auto-assigned')
+            });
+
+            // Use API gateway for upload
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const uploadUrl = `${API_URL}/api/content/upload`;
+
             console.log('[Upload] Starting upload:', {
                 url: uploadUrl,
                 fileName: files[0].name,
@@ -69,7 +119,7 @@ export default function MediaLibrary() {
                 tenantId: user.tenantId,
                 hasToken: !!token
             });
-            
+
             const response = await fetch(uploadUrl, {
                 method: 'POST',
                 headers: {
@@ -78,17 +128,17 @@ export default function MediaLibrary() {
                 },
                 body: formData
             });
-            
+
             const responseText = await response.text();
             let responseData;
-            
+
             try {
                 responseData = JSON.parse(responseText);
             } catch (e) {
                 console.error('[Upload] Invalid JSON response:', responseText);
                 throw new Error(`Server error: ${response.status} ${response.statusText}`);
             }
-            
+
             if (!response.ok) {
                 console.error('[Upload] Upload failed:', {
                     status: response.status,
@@ -97,7 +147,7 @@ export default function MediaLibrary() {
                 });
                 throw new Error(responseData.error || responseData.details || `Upload failed: ${response.status}`);
             }
-            
+
             console.log('[Upload] Upload successful:', responseData);
             return responseData;
         },
@@ -128,7 +178,19 @@ export default function MediaLibrary() {
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop: (files) => {
-            if (canManageMedia) uploadMutation.mutate(files);
+            if (!canManageMedia) return;
+            
+            // Validate property/zone selection before upload
+            if (user?.role === 'super_admin' && !selectedPropertyId) {
+                alert('Please select a property before uploading');
+                return;
+            }
+            if (user?.role === 'property_admin' && !selectedZoneId) {
+                alert('Please select a zone before uploading');
+                return;
+            }
+            
+            uploadMutation.mutate(files);
         },
         disabled: !canManageMedia,
         accept: {
@@ -164,6 +226,26 @@ export default function MediaLibrary() {
                 <h1>Media Library</h1>
                 <p>Manage your images, videos, and documents</p>
             </div>
+
+            {user?.role === 'super_admin' && (
+                <PropertyZoneSelector
+                    selectedPropertyId={selectedPropertyId}
+                    selectedZoneId={selectedZoneId}
+                    onPropertyChange={setSelectedPropertyId}
+                    onZoneChange={setSelectedZoneId}
+                    required={false}
+                />
+            )}
+
+            {(user?.role === 'property_admin' || user?.role === 'zone_admin') && (
+                <PropertyZoneSelector
+                    selectedPropertyId={selectedPropertyId}
+                    selectedZoneId={selectedZoneId}
+                    onPropertyChange={setSelectedPropertyId}
+                    onZoneChange={setSelectedZoneId}
+                    required={user?.role === 'property_admin'}
+                />
+            )}
 
             <div className="media-toolbar">
                 <div className="media-search">
@@ -211,6 +293,23 @@ export default function MediaLibrary() {
                                     <img
                                         src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${asset.thumbnailUrl || asset.url}`}
                                         alt={asset.originalName}
+                                        onError={(e) => {
+                                            // Fallback to original image if thumbnail fails
+                                            if (asset.thumbnailUrl && e.target.src !== asset.url) {
+                                                e.target.src = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${asset.url}`;
+                                            }
+                                        }}
+                                    />
+                                ) : asset.fileType === 'video' && asset.thumbnailUrl ? (
+                                    <img
+                                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${asset.thumbnailUrl}`}
+                                        alt={asset.originalName}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        onError={(e) => {
+                                            // Fallback to video icon if thumbnail fails
+                                            e.target.style.display = 'none';
+                                            e.target.parentElement.innerHTML = `<div class="media-icon">${getFileIcon(asset.fileType)}</div>`;
+                                        }}
                                     />
                                 ) : (
                                     <div className="media-icon">
@@ -225,16 +324,35 @@ export default function MediaLibrary() {
                                 <div className="media-meta">
                                     {formatFileSize(asset.fileSize)}
                                     {asset.width && ` · ${asset.width}x${asset.height}`}
+                                    {asset.isShared && (
+                                        <span className="shared-badge" title="Shared with other properties">
+                                            <Share2 size={12} /> Shared
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             {canManageMedia && (
-                                <button
-                                    className="media-delete"
-                                    onClick={() => deleteMutation.mutate(asset.id)}
-                                    title="Delete"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
+                                <div className="media-actions">
+                                    {user?.role === 'super_admin' && (
+                                        <button
+                                            className="media-share"
+                                            onClick={() => {
+                                                setSharingAsset(asset);
+                                                setShareModalOpen(true);
+                                            }}
+                                            title="Share"
+                                        >
+                                            <Share2 size={16} />
+                                        </button>
+                                    )}
+                                    <button
+                                        className="media-delete"
+                                        onClick={() => deleteMutation.mutate(asset.id)}
+                                        title="Delete"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
                             )}
                         </div>
                     ))}
@@ -247,6 +365,20 @@ export default function MediaLibrary() {
                     <h3>No media found</h3>
                     <p>Upload your first media file to get started</p>
                 </div>
+            )}
+
+            {shareModalOpen && sharingAsset && (
+                <ContentShareModal
+                    isOpen={shareModalOpen}
+                    onClose={() => {
+                        setShareModalOpen(false);
+                        setSharingAsset(null);
+                    }}
+                    contentId={sharingAsset.id}
+                    contentType="media"
+                    currentSharedProperties={sharingAsset.sharedWithProperties || []}
+                    isShared={sharingAsset.isShared || false}
+                />
             )}
         </div>
     );

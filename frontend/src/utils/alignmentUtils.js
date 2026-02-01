@@ -158,3 +158,153 @@ export function ungroupZones(zones, groupId) {
     // you'd need to store the original zones and restore them
     return zones.filter(z => z.id !== groupId);
 }
+
+// Advanced alignment functions
+
+/**
+ * Match width of selected zones to the widest zone
+ */
+export function matchWidth(zones) {
+    if (zones.length < 2) return zones;
+    const maxWidth = Math.max(...zones.map(z => z.width));
+    return zones.map(z => ({ ...z, width: maxWidth }));
+}
+
+/**
+ * Match height of selected zones to the tallest zone
+ */
+export function matchHeight(zones) {
+    if (zones.length < 2) return zones;
+    const maxHeight = Math.max(...zones.map(z => z.height));
+    return zones.map(z => ({ ...z, height: maxHeight }));
+}
+
+/**
+ * Match both width and height
+ */
+export function matchSize(zones) {
+    if (zones.length < 2) return zones;
+    const maxWidth = Math.max(...zones.map(z => z.width));
+    const maxHeight = Math.max(...zones.map(z => z.height));
+    return zones.map(z => ({ ...z, width: maxWidth, height: maxHeight }));
+}
+
+/**
+ * Center selected zones on canvas
+ */
+export function centerOnCanvas(zones, canvasWidth, canvasHeight) {
+    if (zones.length === 0) return zones;
+    
+    // Calculate bounding box of all selected zones
+    const minX = Math.min(...zones.map(z => z.x));
+    const minY = Math.min(...zones.map(z => z.y));
+    const maxX = Math.max(...zones.map(z => z.x + z.width));
+    const maxY = Math.max(...zones.map(z => z.y + z.height));
+    
+    const groupWidth = maxX - minX;
+    const groupHeight = maxY - minY;
+    
+    // Calculate center position
+    const centerX = (canvasWidth - groupWidth) / 2;
+    const centerY = (canvasHeight - groupHeight) / 2;
+    
+    // Calculate offset
+    const offsetX = centerX - minX;
+    const offsetY = centerY - minY;
+    
+    return zones.map(z => ({
+        ...z,
+        x: z.x + offsetX,
+        y: z.y + offsetY
+    }));
+}
+
+/**
+ * Align zones to grid
+ */
+export function alignToGrid(zones, gridSize = 10) {
+    return zones.map(z => ({
+        ...z,
+        x: Math.round(z.x / gridSize) * gridSize,
+        y: Math.round(z.y / gridSize) * gridSize,
+        width: Math.round(z.width / gridSize) * gridSize,
+        height: Math.round(z.height / gridSize) * gridSize
+    }));
+}
+
+/**
+ * Get smart snap position based on other zones
+ */
+export function getSmartSnapPosition(zone, allZones, threshold = 5) {
+    let snapX = zone.x;
+    let snapY = zone.y;
+    
+    allZones.forEach(otherZone => {
+        if (otherZone.id === zone.id) return;
+        
+        // Snap to left edge
+        if (Math.abs(zone.x - otherZone.x) < threshold) {
+            snapX = otherZone.x;
+        }
+        // Snap to right edge
+        if (Math.abs(zone.x - (otherZone.x + otherZone.width)) < threshold) {
+            snapX = otherZone.x + otherZone.width;
+        }
+        // Snap to center
+        if (Math.abs(zone.x + zone.width / 2 - (otherZone.x + otherZone.width / 2)) < threshold) {
+            snapX = otherZone.x + otherZone.width / 2 - zone.width / 2;
+        }
+        
+        // Snap to top edge
+        if (Math.abs(zone.y - otherZone.y) < threshold) {
+            snapY = otherZone.y;
+        }
+        // Snap to bottom edge
+        if (Math.abs(zone.y - (otherZone.y + otherZone.height)) < threshold) {
+            snapY = otherZone.y + otherZone.height;
+        }
+        // Snap to center
+        if (Math.abs(zone.y + zone.height / 2 - (otherZone.y + otherZone.height / 2)) < threshold) {
+            snapY = otherZone.y + otherZone.height / 2 - zone.height / 2;
+        }
+    });
+    
+    return { x: snapX, y: snapY };
+}
+
+/**
+ * Distribute spacing evenly (improved version)
+ */
+export function distributeSpacingEvenly(zones, direction = 'horizontal') {
+    if (zones.length < 3) return zones;
+    
+    if (direction === 'horizontal') {
+        const sorted = [...zones].sort((a, b) => a.x - b.x);
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const totalWidth = (last.x + last.width) - first.x;
+        const totalZoneWidths = sorted.reduce((sum, z) => sum + z.width, 0);
+        const spacing = (totalWidth - totalZoneWidths) / (sorted.length - 1);
+        
+        let currentX = first.x;
+        return sorted.map(zone => {
+            const newZone = { ...zone, x: currentX };
+            currentX += zone.width + spacing;
+            return newZone;
+        });
+    } else {
+        const sorted = [...zones].sort((a, b) => a.y - b.y);
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const totalHeight = (last.y + last.height) - first.y;
+        const totalZoneHeights = sorted.reduce((sum, z) => sum + z.height, 0);
+        const spacing = (totalHeight - totalZoneHeights) / (sorted.length - 1);
+        
+        let currentY = first.y;
+        return sorted.map(zone => {
+            const newZone = { ...zone, y: currentY };
+            currentY += zone.height + spacing;
+            return newZone;
+        });
+    }
+}

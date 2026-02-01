@@ -1,8 +1,9 @@
+import React, { useMemo } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Eye, EyeOff, Lock, Unlock, Trash2, Image as ImageIcon, Clock, Cloud, QrCode, Globe, Type } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, Trash2, Image as ImageIcon, Clock, Cloud, QrCode, Globe, Type, Group, Copy, Layers } from 'lucide-react';
 import './LayerPanel.css';
 
 const WIDGET_ICONS = {
@@ -14,7 +15,7 @@ const WIDGET_ICONS = {
     media: ImageIcon
 };
 
-function LayerItem({ zone, isSelected, onSelect, onToggleVisibility, onToggleLock, onDelete, index }) {
+const LayerItem = React.memo(function LayerItem({ zone, isSelected, onSelect, onToggleVisibility, onToggleLock, onDelete, index }) {
     const {
         attributes,
         listeners,
@@ -80,6 +81,16 @@ function LayerItem({ zone, isSelected, onSelect, onToggleVisibility, onToggleLoc
                     {zone.isLocked ? <Lock size={14} /> : <Unlock size={14} />}
                 </button>
                 <button
+                    className="layer-action-btn"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleDuplicate(zone.id);
+                    }}
+                    title="Duplicate"
+                >
+                    <Copy size={14} />
+                </button>
+                <button
                     className="layer-action-btn delete"
                     onClick={(e) => {
                         e.stopPropagation();
@@ -92,9 +103,11 @@ function LayerItem({ zone, isSelected, onSelect, onToggleVisibility, onToggleLoc
             </div>
         </div>
     );
-}
+});
 
-export default function LayerPanel({ zones, selectedZoneIds, onSelectZone, onZonesChange, onDeleteZone }) {
+LayerItem.displayName = 'LayerItem';
+
+export default function LayerPanel({ zones, selectedZoneIds, onSelectZone, onZonesChange, onDeleteZone, onGroup, onDuplicate }) {
     const handleToggleVisibility = (zoneId) => {
         onZonesChange(zones.map(z =>
             z.id === zoneId ? { ...z, isVisible: z.isVisible === false ? true : false } : z
@@ -127,14 +140,38 @@ export default function LayerPanel({ zones, selectedZoneIds, onSelectZone, onZon
         onZonesChange(updatedZones);
     };
 
-    // Sort zones by z-index for display
-    const sortedZones = [...zones].sort((a, b) => (b.zIndex || 0) - (a.zIndex || 0));
-    const zoneIds = sortedZones.map(z => z.id);
+    // Sort zones by z-index for display (memoized)
+    const sortedZones = useMemo(() => {
+        return [...zones].sort((a, b) => (b.zIndex || 0) - (a.zIndex || 0));
+    }, [zones]);
+    
+    const zoneIds = useMemo(() => sortedZones.map(z => z.id), [sortedZones]);
+
+    const handleGroup = () => {
+        if (selectedZoneIds.length >= 2 && onGroup) {
+            onGroup();
+        }
+    };
+
+    const handleDuplicate = (zoneId) => {
+        if (onDuplicate) {
+            onDuplicate(zoneId);
+        }
+    };
 
     return (
         <div className="layer-panel">
             <div className="layer-panel-header">
                 <h3>Layers ({zones.length})</h3>
+                {selectedZoneIds.length >= 2 && (
+                    <button
+                        className="btn btn-sm btn-outline"
+                        onClick={handleGroup}
+                        title="Group Selected"
+                    >
+                        <Group size={14} />
+                    </button>
+                )}
             </div>
             <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={zoneIds} strategy={verticalListSortingStrategy}>

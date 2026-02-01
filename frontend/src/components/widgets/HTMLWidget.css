@@ -1,0 +1,12 @@
+.html-widget {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    box-sizing: border-box;
+}
+
+.html-widget iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}

@@ -25,8 +25,8 @@ app.use(cors({
 
 // Body parsing - MUST skip for multipart/form-data to allow file uploads
 // Create parsers but apply conditionally
-const jsonParser = express.json({ limit: '10mb' });
-const urlencodedParser = express.urlencoded({ extended: true, limit: '10mb' });
+const jsonParser = express.json({ limit: '200mb' });
+const urlencodedParser = express.urlencoded({ extended: true, limit: '200mb' });
 
 // Apply body parsing conditionally - skip multipart/form-data
 app.use((req, res, next) => {
@@ -104,12 +104,13 @@ const proxyOptions = {
     }
 
     // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
-    if (req.method === 'POST' && req.path.includes('/commands')) {
-      console.log(`[Gateway] Intercepted potential command. Path: ${req.path}, Method: ${req.method}`);
+    const requestPath = req.url || req.path || '';
+    if (req.method === 'POST' && requestPath.includes('/commands')) {
+      console.log(`[Gateway] Intercepted potential command. Path: ${requestPath}, Method: ${req.method}`);
       console.log(`[Gateway] Body:`, JSON.stringify(req.body));
 
       // Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
-      const match = req.path.match(/\/(?:api\/)?devices\/([^/]+)\/commands/);
+      const match = requestPath.match(/\/(?:api\/)?devices\/([^/]+)\/commands/);
       const deviceId = match ? match[1] : null;
       const { commandType } = req.body;
 
@@ -173,7 +174,14 @@ app.use('/api/content', createProxyMiddleware(contentProxyOptions));
 app.use('/api/templates', createProxyMiddleware({
   ...proxyOptions,
   target: services.template,
-  pathRewrite: { '^/api/templates': '' }
+  pathRewrite: { '^/api/templates': '/templates' }
+}));
+
+// Widget settings routes (also proxied to template service)
+app.use('/api/settings', createProxyMiddleware({
+  ...proxyOptions,
+  target: services.template,
+  pathRewrite: { '^/api/settings': '/settings' }
 }));
 
 // Proxy for scheduling service - handles /schedules, /playlists, /player routes

@@ -1,3 +1,4 @@
+import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Clock, Cloud, QrCode, Globe, Type, Image as ImageIcon, Video } from 'lucide-react';
 import ResizeHandles from './ResizeHandles';
@@ -12,11 +13,12 @@ const WIDGET_ICONS = {
     media: ImageIcon
 };
 
-export default function ZoneElement({
+const ZoneElement = React.memo(function ZoneElement({
     zone,
     isSelected,
     onSelect,
     onResizeStart,
+    onRotate,
     scale = 1,
     canvasWidth,
     canvasHeight
@@ -102,12 +104,21 @@ export default function ZoneElement({
             style={{
                 ...style,
                 position: 'absolute',
-                left: zone.x,
-                top: zone.y,
-                width: zone.width,
-                height: zone.height,
+                left: `${zone.x}px`,
+                top: `${zone.y}px`,
+                width: `${zone.width}px`,
+                height: `${zone.height}px`,
                 zIndex: zone.zIndex || 0,
-                opacity: zone.isVisible !== false ? 1 : 0.3
+                opacity: zone.isVisible !== false ? (zone.opacity !== undefined ? zone.opacity : 1) : 0.3,
+                filter: zone.blur ? `blur(${zone.blur}px)` : undefined,
+                mixBlendMode: zone.blendMode || 'normal',
+                transform: [
+                    style.transform,
+                    zone.rotation ? `rotate(${zone.rotation}deg)` : null,
+                    zone.flipHorizontal ? 'scaleX(-1)' : null,
+                    zone.flipVertical ? 'scaleY(-1)' : null
+                ].filter(Boolean).join(' ') || undefined,
+                transformOrigin: 'center center'
             }}
             className={`zone-element ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${zone.isLocked ? 'locked' : ''}`}
             onClick={(e) => {
@@ -132,4 +143,21 @@ export default function ZoneElement({
             )}
         </div>
     );
-}
+}, (prevProps, nextProps) => {
+    // Custom comparison function for React.memo
+    // Only re-render if zone properties actually changed
+    return (
+        prevProps.zone.id === nextProps.zone.id &&
+        prevProps.zone.x === nextProps.zone.x &&
+        prevProps.zone.y === nextProps.zone.y &&
+        prevProps.zone.width === nextProps.zone.width &&
+        prevProps.zone.height === nextProps.zone.height &&
+        prevProps.zone.zIndex === nextProps.zone.zIndex &&
+        prevProps.zone.isVisible === nextProps.zone.isVisible &&
+        prevProps.zone.isLocked === nextProps.zone.isLocked &&
+        prevProps.isSelected === nextProps.isSelected &&
+        prevProps.scale === nextProps.scale
+    );
+});
+
+export default ZoneElement;

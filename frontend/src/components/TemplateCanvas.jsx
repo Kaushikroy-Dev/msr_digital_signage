@@ -5,11 +5,13 @@ import ZoneElement from './ZoneElement';
 import { calculateResize, snapToGrid, getAlignmentGuides } from '../utils/canvasUtils';
 import './TemplateCanvas.css';
 
-function CanvasGrid({ width, height, gridSize, showGrid }) {
+function CanvasGrid({ width, height, gridSize = 20, showGrid, scale = 1 }) {
     if (!showGrid) return null;
 
     const lines = [];
-    const step = gridSize;
+    const step = gridSize || 20;
+    const gridColor = 'rgba(0, 0, 0, 0.15)';
+    const gridStrokeWidth = 1 / scale; // Scale stroke width inversely with zoom
 
     // Vertical lines
     for (let x = 0; x <= width; x += step) {
@@ -20,8 +22,8 @@ function CanvasGrid({ width, height, gridSize, showGrid }) {
                 y1={0}
                 x2={x}
                 y2={height}
-                stroke="rgba(0, 0, 0, 0.1)"
-                strokeWidth="1"
+                stroke={gridColor}
+                strokeWidth={gridStrokeWidth}
             />
         );
     }
@@ -35,14 +37,27 @@ function CanvasGrid({ width, height, gridSize, showGrid }) {
                 y1={y}
                 x2={width}
                 y2={y}
-                stroke="rgba(0, 0, 0, 0.1)"
-                strokeWidth="1"
+                stroke={gridColor}
+                strokeWidth={gridStrokeWidth}
             />
         );
     }
 
     return (
-        <svg className="canvas-grid" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+        <svg 
+            className="canvas-grid" 
+            style={{ 
+                position: 'absolute', 
+                top: 0, 
+                left: 0, 
+                pointerEvents: 'none',
+                width: width,
+                height: height,
+                zIndex: 1
+            }}
+            width={width}
+            height={height}
+        >
             {lines}
         </svg>
     );
@@ -142,14 +157,23 @@ function TemplateCanvas({
             const deltaX = (e.clientX - resizeStartPos.x) / scale;
             const deltaY = (e.clientY - resizeStartPos.y) / scale;
             const constrainAspectRatio = e.shiftKey;
+            const resizeFromCenter = e.altKey;
 
-            const updatedZone = calculateResize(
+            let updatedZone = calculateResize(
                 resizeStartZone,
                 resizeHandle,
                 deltaX,
                 deltaY,
                 constrainAspectRatio
             );
+
+            // Resize from center (Alt key)
+            if (resizeFromCenter) {
+                const widthDelta = updatedZone.width - resizeStartZone.width;
+                const heightDelta = updatedZone.height - resizeStartZone.height;
+                updatedZone.x = resizeStartZone.x - widthDelta / 2;
+                updatedZone.y = resizeStartZone.y - heightDelta / 2;
+            }
 
             // Constrain to canvas bounds
             updatedZone.x = Math.max(0, Math.min(updatedZone.x, width - updatedZone.width));
@@ -210,20 +234,24 @@ function TemplateCanvas({
                     className="template-canvas"
                     style={canvasStyle}
                 >
-                    <CanvasGrid width={width} height={height} gridSize={gridSize} showGrid={showGrid} />
+                    <CanvasGrid width={width} height={height} gridSize={gridSize} showGrid={showGrid} scale={scale} />
                     <AlignmentGuides guides={alignmentGuides} width={width} height={height} />
-                    {zones.map((zone) => (
-                        <ZoneElement
-                            key={zone.id}
-                            zone={zone}
-                            isSelected={selectedZoneIds.includes(zone.id)}
-                            onSelect={onSelectZone}
-                            onResizeStart={handleResizeStart}
-                            scale={scale}
-                            canvasWidth={width}
-                            canvasHeight={height}
-                        />
-                    ))}
+                    {zones.map((zone) => {
+                        // Only render visible zones for performance
+                        if (zone.isVisible === false) return null;
+                        return (
+                            <ZoneElement
+                                key={zone.id}
+                                zone={zone}
+                                isSelected={selectedZoneIds.includes(zone.id)}
+                                onSelect={onSelectZone}
+                                onResizeStart={handleResizeStart}
+                                scale={scale}
+                                canvasWidth={width}
+                                canvasHeight={height}
+                            />
+                        );
+                    })}
                 </div>
             </DroppableCanvas>
         </div>

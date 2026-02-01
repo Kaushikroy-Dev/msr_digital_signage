@@ -26,7 +26,7 @@ export function isAligned(zone1, zone2, threshold = 5) {
 }
 
 /**
- * Get alignment guides for a zone
+ * Get alignment guides for a zone (enhanced with smart snapping)
  */
 export function getAlignmentGuides(zone, allZones, threshold = 5) {
     const guides = {
@@ -35,32 +35,103 @@ export function getAlignmentGuides(zone, allZones, threshold = 5) {
     };
 
     allZones.forEach(otherZone => {
-        if (otherZone.id === zone.id) return;
+        if (otherZone.id === zone.id || !otherZone.isVisible) return;
 
         // Vertical alignment (x positions)
         if (Math.abs(zone.x - otherZone.x) < threshold) {
-            guides.vertical.push({ position: zone.x, type: 'left' });
+            guides.vertical.push({ position: zone.x, type: 'left', zoneId: otherZone.id });
         }
         if (Math.abs(zone.x + zone.width - (otherZone.x + otherZone.width)) < threshold) {
-            guides.vertical.push({ position: zone.x + zone.width, type: 'right' });
+            guides.vertical.push({ position: zone.x + zone.width, type: 'right', zoneId: otherZone.id });
         }
         if (Math.abs(zone.x + zone.width / 2 - (otherZone.x + otherZone.width / 2)) < threshold) {
-            guides.vertical.push({ position: zone.x + zone.width / 2, type: 'center' });
+            guides.vertical.push({ position: zone.x + zone.width / 2, type: 'center', zoneId: otherZone.id });
+        }
+        
+        // Additional smart guides: snap to edges
+        if (Math.abs(zone.x - (otherZone.x + otherZone.width)) < threshold) {
+            guides.vertical.push({ position: otherZone.x + otherZone.width, type: 'edge-left', zoneId: otherZone.id });
+        }
+        if (Math.abs((zone.x + zone.width) - otherZone.x) < threshold) {
+            guides.vertical.push({ position: otherZone.x, type: 'edge-right', zoneId: otherZone.id });
         }
 
         // Horizontal alignment (y positions)
         if (Math.abs(zone.y - otherZone.y) < threshold) {
-            guides.horizontal.push({ position: zone.y, type: 'top' });
+            guides.horizontal.push({ position: zone.y, type: 'top', zoneId: otherZone.id });
         }
         if (Math.abs(zone.y + zone.height - (otherZone.y + otherZone.height)) < threshold) {
-            guides.horizontal.push({ position: zone.y + zone.height, type: 'bottom' });
+            guides.horizontal.push({ position: zone.y + zone.height, type: 'bottom', zoneId: otherZone.id });
         }
         if (Math.abs(zone.y + zone.height / 2 - (otherZone.y + otherZone.height / 2)) < threshold) {
-            guides.horizontal.push({ position: zone.y + zone.height / 2, type: 'center' });
+            guides.horizontal.push({ position: zone.y + zone.height / 2, type: 'center', zoneId: otherZone.id });
+        }
+        
+        // Additional smart guides: snap to edges
+        if (Math.abs(zone.y - (otherZone.y + otherZone.height)) < threshold) {
+            guides.horizontal.push({ position: otherZone.y + otherZone.height, type: 'edge-top', zoneId: otherZone.id });
+        }
+        if (Math.abs((zone.y + zone.height) - otherZone.y) < threshold) {
+            guides.horizontal.push({ position: otherZone.y, type: 'edge-bottom', zoneId: otherZone.id });
         }
     });
 
-    return guides;
+    // Remove duplicates
+    const uniqueVertical = guides.vertical.filter((guide, index, self) =>
+        index === self.findIndex(g => g.position === guide.position && g.type === guide.type)
+    );
+    const uniqueHorizontal = guides.horizontal.filter((guide, index, self) =>
+        index === self.findIndex(g => g.position === guide.position && g.type === guide.type)
+    );
+
+    return {
+        vertical: uniqueVertical,
+        horizontal: uniqueHorizontal
+    };
+}
+
+/**
+ * Apply smart snap to guides during drag
+ */
+export function applySmartSnap(zone, allZones, threshold = 5) {
+    const guides = getAlignmentGuides(zone, allZones, threshold);
+    let snappedZone = { ...zone };
+
+    // Apply vertical snap
+    if (guides.vertical.length > 0) {
+        const closestGuide = guides.vertical.reduce((closest, guide) => {
+            const distance = Math.abs(zone.x - guide.position);
+            const closestDistance = Math.abs(zone.x - closest.position);
+            return distance < closestDistance ? guide : closest;
+        });
+        
+        if (Math.abs(zone.x - closestGuide.position) < threshold) {
+            snappedZone.x = closestGuide.position;
+        } else if (closestGuide.type === 'center') {
+            snappedZone.x = closestGuide.position - zone.width / 2;
+        } else if (closestGuide.type === 'right') {
+            snappedZone.x = closestGuide.position - zone.width;
+        }
+    }
+
+    // Apply horizontal snap
+    if (guides.horizontal.length > 0) {
+        const closestGuide = guides.horizontal.reduce((closest, guide) => {
+            const distance = Math.abs(zone.y - guide.position);
+            const closestDistance = Math.abs(zone.y - closest.position);
+            return distance < closestDistance ? guide : closest;
+        });
+        
+        if (Math.abs(zone.y - closestGuide.position) < threshold) {
+            snappedZone.y = closestGuide.position;
+        } else if (closestGuide.type === 'center') {
+            snappedZone.y = closestGuide.position - zone.height / 2;
+        } else if (closestGuide.type === 'bottom') {
+            snappedZone.y = closestGuide.position - zone.height;
+        }
+    }
+
+    return snappedZone;
 }
 
 /**

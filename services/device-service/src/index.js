@@ -67,7 +67,7 @@ app.get('/devices', authenticateToken, async (req, res) => {
 
         let query = `
             SELECT d.*, z.name as zone_name, p.name as property_name
-            FROM devices d
+            FROM public.devices d
             LEFT JOIN zones z ON d.zone_id = z.id
             LEFT JOIN properties p ON z.property_id = p.id
             WHERE p.tenant_id = $1
@@ -109,6 +109,11 @@ app.post('/devices', authenticateToken, async (req, res) => {
         const { name, deviceCode, zoneId, platform, orientation } = req.body;
         const { role, userId } = req.user;
 
+        // Zone admins cannot create devices
+        if (role === 'zone_admin') {
+            return res.status(403).json({ error: 'Zone admins cannot add devices. Please contact a Super Admin or Organization Admin.' });
+        }
+
         // Verify user has access to this zone
         if (role !== 'super_admin') {
             let hasAccess = false;
@@ -117,12 +122,6 @@ app.post('/devices', authenticateToken, async (req, res) => {
                     `SELECT 1 FROM user_property_access upa
                      JOIN zones z ON upa.property_id = z.property_id
                      WHERE upa.user_id = $1 AND z.id = $2`,
-                    [userId, zoneId]
-                );
-                hasAccess = accessCheck.rows.length > 0;
-            } else if (role === 'zone_admin') {
-                const accessCheck = await pool.query(
-                    `SELECT 1 FROM user_zone_access WHERE user_id = $1 AND zone_id = $2`,
                     [userId, zoneId]
                 );
                 hasAccess = accessCheck.rows.length > 0;
@@ -157,14 +156,14 @@ app.get('/properties', authenticateToken, async (req, res) => {
         const { tenantId } = req.query;
         const { role, userId } = req.user;
 
-        let query = 'SELECT * FROM properties WHERE tenant_id = $1';
+        let query = 'SELECT * FROM public.properties WHERE tenant_id = $1';
         let params = [tenantId || req.user.tenantId];
 
         if (role === 'property_admin') {
             query += ' AND id IN (SELECT property_id FROM user_property_access WHERE user_id = $2)';
             params.push(userId);
         } else if (role === 'zone_admin') {
-            query += ' AND id IN (SELECT property_id FROM zones WHERE id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $2))';
+            query += ' AND id IN (SELECT property_id FROM public.zones WHERE id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $2))';
             params.push(userId);
         }
 
@@ -245,7 +244,7 @@ app.delete('/properties/:id', authenticateToken, async (req, res) => {
         }
         const { id } = req.params;
 
-        const result = await pool.query('DELETE FROM properties WHERE id = $1', [id]);
+        const result = await pool.query('DELETE FROM public.properties WHERE id = $1', [id]);
 
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Property not found' });
@@ -268,7 +267,7 @@ app.get('/zones', authenticateToken, async (req, res) => {
         const { propertyId } = req.query;
         const { role, userId } = req.user;
 
-        let query = 'SELECT * FROM zones WHERE property_id = $1';
+        let query = 'SELECT * FROM public.zones WHERE property_id = $1';
         let params = [propertyId];
 
         if (role === 'zone_admin') {
@@ -301,7 +300,7 @@ app.get('/all-zones', authenticateToken, async (req, res) => {
         const { role, userId } = req.user;
 
         let query = `
-            SELECT z.* FROM zones z
+            SELECT z.* FROM public.zones z
             INNER JOIN properties p ON z.property_id = p.id
             WHERE p.tenant_id = $1
         `;
@@ -365,7 +364,7 @@ app.put('/zones/:id', authenticateToken, async (req, res) => {
         // Verify permission to update zone
         if (role !== 'super_admin') {
             // Must be property admin of the parent property
-            const zoneQuery = await pool.query('SELECT property_id FROM zones WHERE id = $1', [id]);
+            const zoneQuery = await pool.query('SELECT property_id FROM public.zones WHERE id = $1', [id]);
             if (zoneQuery.rows.length === 0) return res.status(404).json({ error: 'Area not found' });
 
             const propertyId = zoneQuery.rows[0].property_id;
@@ -406,7 +405,7 @@ app.delete('/zones/:id', authenticateToken, async (req, res) => {
         // Verify permission to delete zone
         if (role !== 'super_admin') {
             // Must be property admin of the parent property
-            const zoneQuery = await pool.query('SELECT property_id FROM zones WHERE id = $1', [id]);
+            const zoneQuery = await pool.query('SELECT property_id FROM public.zones WHERE id = $1', [id]);
             if (zoneQuery.rows.length === 0) return res.status(404).json({ error: 'Area not found' });
 
             const propertyId = zoneQuery.rows[0].property_id;
@@ -419,7 +418,7 @@ app.delete('/zones/:id', authenticateToken, async (req, res) => {
             }
         }
 
-        const result = await pool.query('DELETE FROM zones WHERE id = $1', [id]);
+        const result = await pool.query('DELETE FROM public.zones WHERE id = $1', [id]);
 
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Zone not found' });
@@ -548,11 +547,18 @@ app.get('/pairing/status/:code', async (req, res) => {
 });
 
 // Claim pairing code (Called by Portal)
-app.post('/pairing/claim', async (req, res) => {
+app.post('/pairing/claim', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         const { code, name, zoneId, platform } = req.body;
+        const { role } = req.user;
         const cleanCode = code.toUpperCase().replace(/[^A-Z2-9]/g, '');
+
+        // Zone admins cannot claim devices
+        if (role === 'zone_admin') {
+            client.release();
+            return res.status(403).json({ error: 'Zone admins cannot add devices. Please contact a Super Admin or Organization Admin.' });
+        }
 
         await client.query('BEGIN');
 
@@ -568,7 +574,7 @@ app.post('/pairing/claim', async (req, res) => {
         }
 
         // 2. Validate zone exists
-        const zoneCheck = await client.query('SELECT id FROM zones WHERE id = $1', [zoneId]);
+        const zoneCheck = await client.query('SELECT id FROM public.zones WHERE id = $1', [zoneId]);
         if (zoneCheck.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: 'Invalid zone ID' });
@@ -623,11 +629,16 @@ app.delete('/devices/:id', authenticateToken, async (req, res) => {
         const { id } = req.params;
         const { role, userId } = req.user;
 
+        // Zone admins cannot delete devices
+        if (role === 'zone_admin') {
+            return res.status(403).json({ error: 'Zone admins cannot remove devices. Please contact a Super Admin or Organization Admin.' });
+        }
+
         // Check if user has permission to delete this device
         if (role !== 'super_admin') {
             const deviceCheck = await pool.query(
                 `SELECT d.*, z.property_id 
-                 FROM devices d 
+                 FROM public.devices d 
                  JOIN zones z ON d.zone_id = z.id 
                  WHERE d.id = $1`,
                 [id]
@@ -647,21 +658,13 @@ app.delete('/devices/:id', authenticateToken, async (req, res) => {
                 if (accessCheck.rows.length === 0) {
                     return res.status(403).json({ error: 'Permission denied' });
                 }
-            } else if (role === 'zone_admin') {
-                const accessCheck = await pool.query(
-                    'SELECT 1 FROM user_zone_access WHERE user_id = $1 AND zone_id = $2',
-                    [userId, deviceCheck.rows[0].zone_id]
-                );
-                if (accessCheck.rows.length === 0) {
-                    return res.status(403).json({ error: 'Permission denied' });
-                }
             } else {
                 return res.status(403).json({ error: 'Permission denied' });
             }
         }
 
         console.log(`[DeviceService] Deleting device: ${id}`);
-        const result = await pool.query('DELETE FROM devices WHERE id = $1', [id]);
+        const result = await pool.query('DELETE FROM public.devices WHERE id = $1', [id]);
         console.log(`[DeviceService] Delete result: ${result.rowCount} rows affected`);
         res.json({ message: 'Device deleted successfully' });
     } catch (error) {
@@ -683,7 +686,7 @@ app.post('/devices/:id/commands', authenticateToken, async (req, res) => {
         if (role !== 'super_admin') {
             const deviceCheck = await pool.query(
                 `SELECT d.*, z.property_id 
-                 FROM devices d 
+                 FROM public.devices d 
                  JOIN zones z ON d.zone_id = z.id 
                  WHERE d.id = $1`,
                 [id]
@@ -738,7 +741,7 @@ app.post('/devices/:id/commands', authenticateToken, async (req, res) => {
 // Get dashboard statistics
 app.get('/analytics/dashboard-stats', authenticateToken, async (req, res) => {
     try {
-        const { tenantId } = req.query;
+        const { tenantId, propertyId } = req.query;
         const { role, userId } = req.user;
         const targetTenantId = tenantId || req.user.tenantId;
 
@@ -747,12 +750,18 @@ app.get('/analytics/dashboard-stats', authenticateToken, async (req, res) => {
             SELECT 
                 COUNT(*) as total_devices,
                 COUNT(*) FILTER (WHERE d.status = 'online') as online_devices
-            FROM devices d
+            FROM public.devices d
             LEFT JOIN zones z ON d.zone_id = z.id
             LEFT JOIN properties p ON z.property_id = p.id
             WHERE p.tenant_id = $1
         `;
         let deviceParams = [targetTenantId];
+
+        // Apply property filtering for super_admin
+        if (role === 'super_admin' && propertyId) {
+            deviceQuery += ` AND p.id = $${deviceParams.length + 1}`;
+            deviceParams.push(propertyId);
+        }
 
         // Apply RBAC filtering for devices
         if (role === 'property_admin') {
@@ -763,25 +772,59 @@ app.get('/analytics/dashboard-stats', authenticateToken, async (req, res) => {
             deviceParams.push(userId);
         }
 
+        // Build media query - tenant level (media is shared across properties)
+        let mediaQuery = 'SELECT COUNT(*) as total_media FROM media_assets WHERE tenant_id = $1';
+        let mediaParams = [targetTenantId];
+
+        // Build playlists query - tenant level
+        let playlistsQuery = 'SELECT COUNT(*) as total_playlists FROM playlists WHERE tenant_id = $1';
+        let playlistsParams = [targetTenantId];
+
+        // Build schedules query
+        let schedulesQuery = `
+            SELECT COUNT(DISTINCT s.id) as active_schedules
+            FROM schedules s
+            WHERE s.tenant_id = $1 AND s.is_active = true
+        `;
+        let schedulesParams = [targetTenantId];
+
+        // Apply property filtering for schedules if propertyId is provided and user is super_admin
+        if (role === 'super_admin' && propertyId) {
+            schedulesQuery += ` AND EXISTS (
+                SELECT 1 FROM schedule_devices sd 
+                WHERE sd.schedule_id = s.id 
+                AND sd.property_id = $${schedulesParams.length + 1}
+            )`;
+            schedulesParams.push(propertyId);
+        } else if (role === 'zone_admin') {
+            // Filter schedules by zones assigned to zone_admin
+            schedulesQuery += ` AND EXISTS (
+                SELECT 1 FROM schedule_devices sd 
+                WHERE sd.schedule_id = s.id 
+                AND sd.zone_id IN (SELECT zone_id FROM user_zone_access WHERE user_id = $${schedulesParams.length + 1})
+            )`;
+            schedulesParams.push(userId);
+        } else if (role === 'property_admin') {
+            // Filter schedules by properties assigned to property_admin
+            schedulesQuery += ` AND EXISTS (
+                SELECT 1 FROM schedule_devices sd 
+                WHERE sd.schedule_id = s.id 
+                AND (sd.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${schedulesParams.length + 1})
+                     OR sd.zone_id IN (SELECT z.id FROM public.zones z WHERE z.property_id IN (SELECT property_id FROM user_property_access WHERE user_id = $${schedulesParams.length + 1})))
+            )`;
+            schedulesParams.push(userId);
+        }
+
         // Execute all queries in parallel
         const [devicesResult, mediaResult, playlistsResult, schedulesResult] = await Promise.all([
             // Devices count
             pool.query(deviceQuery, deviceParams),
             // Media assets count
-            pool.query(
-                'SELECT COUNT(*) as total_media FROM media_assets WHERE tenant_id = $1',
-                [targetTenantId]
-            ),
+            pool.query(mediaQuery, mediaParams),
             // Playlists count
-            pool.query(
-                'SELECT COUNT(*) as total_playlists FROM playlists WHERE tenant_id = $1',
-                [targetTenantId]
-            ),
+            pool.query(playlistsQuery, playlistsParams),
             // Active schedules count
-            pool.query(
-                'SELECT COUNT(*) as active_schedules FROM schedules WHERE tenant_id = $1 AND is_active = true',
-                [targetTenantId]
-            )
+            pool.query(schedulesQuery, schedulesParams)
         ]);
 
         const stats = {

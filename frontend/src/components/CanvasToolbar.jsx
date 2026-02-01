@@ -15,7 +15,11 @@ import {
     MoveHorizontal,
     MoveVertical,
     ArrowUpToLine,
-    ArrowDownToLine
+    ArrowDownToLine,
+    Maximize2,
+    Minimize2,
+    Grid3x3,
+    Move
 } from 'lucide-react';
 import './CanvasToolbar.css';
 
@@ -39,7 +43,14 @@ export default function CanvasToolbar({
     onDistributeHorizontal,
     onDistributeVertical,
     onBringForward,
-    onSendBackward
+    onSendBackward,
+    onMatchWidth,
+    onMatchHeight,
+    onMatchSize,
+    onCenterOnCanvas,
+    onAlignToGrid,
+    canvasWidth,
+    canvasHeight
 }) {
     const hasSelection = selectedZones.length > 0;
     const hasMultipleSelection = selectedZones.length > 1;

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Play, Trash2, GripVertical, Image, Video, Eye, Monitor, X, Edit2, Layout } from 'lucide-react';
+import { Plus, Play, Trash2, GripVertical, Image, Video, Eye, Monitor, X, Edit2, Layout, Share2 } from 'lucide-react';
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import PlaylistPreview from '../components/PlaylistPreview';
+import PropertyZoneSelector from '../components/PropertyZoneSelector';
+import ContentShareModal from '../components/ContentShareModal';
 import './Playlists.css';
 
 export default function Playlists() {
@@ -23,41 +25,61 @@ export default function Playlists() {
     const [deleteConfirmPlaylist, setDeleteConfirmPlaylist] = useState(null); // Playlist to delete
     const [contentTab, setContentTab] = useState('media'); // 'media' or 'templates'
     const [selectedTemplates, setSelectedTemplates] = useState(new Set()); // For template selection
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
+    const [selectedZoneId, setSelectedZoneId] = useState('');
+    const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [sharingPlaylist, setSharingPlaylist] = useState(null);
 
     // Fetch playlists
     const { data: playlists } = useQuery({
-        queryKey: ['playlists', user?.tenantId],
+        queryKey: ['playlists', user?.tenantId, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
-            const response = await api.get('/schedules/playlists', {
-                params: { tenantId: user?.tenantId }
-            });
+            const params = { tenantId: user?.tenantId };
+            if (user?.role === 'super_admin') {
+                if (selectedPropertyId) params.propertyId = selectedPropertyId;
+                if (selectedZoneId) params.zoneId = selectedZoneId;
+            }
+            const response = await api.get('/schedules/playlists', { params });
             return response.data.playlists;
         },
         enabled: !!user?.tenantId
     });
 
-    // Fetch media assets for adding to playlist
+    // Fetch media assets for adding to playlist (filtered by selected playlist's property/zone)
     const { data: mediaAssets } = useQuery({
-        queryKey: ['media-assets', user?.tenantId],
+        queryKey: ['media-assets', user?.tenantId, selectedPlaylist?.propertyId, selectedPlaylist?.zoneId, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
-            const response = await api.get('/content/assets', {
-                params: { tenantId: user?.tenantId }
-            });
+            const params = { tenantId: user?.tenantId };
+            // Filter by selected playlist's property/zone, or selected property/zone for new playlists
+            const filterPropertyId = selectedPlaylist?.propertyId || selectedPlaylist?.property_id || selectedPropertyId;
+            const filterZoneId = selectedPlaylist?.zoneId || selectedPlaylist?.zone_id || selectedZoneId;
+            
+            // Apply filters for all roles, not just super_admin
+            if (filterPropertyId) params.propertyId = filterPropertyId;
+            if (filterZoneId) params.zoneId = filterZoneId;
+            
+            const response = await api.get('/content/assets', { params });
             return response.data.assets;
         },
-        enabled: !!user?.tenantId
+        enabled: !!user?.tenantId && (!!selectedPlaylist || !!selectedPropertyId || user?.role !== 'super_admin')
     });
 
-    // Fetch templates for adding to playlist
+    // Fetch templates for adding to playlist (filtered by selected playlist's property/zone)
     const { data: templates } = useQuery({
-        queryKey: ['templates', user?.tenantId],
+        queryKey: ['templates', user?.tenantId, selectedPlaylist?.propertyId, selectedPlaylist?.zoneId, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
-            const response = await api.get('/templates/templates', {
-                params: { tenantId: user?.tenantId }
-            });
+            const params = { tenantId: user?.tenantId };
+            const filterPropertyId = selectedPlaylist?.propertyId || selectedPlaylist?.property_id || selectedPropertyId;
+            const filterZoneId = selectedPlaylist?.zoneId || selectedPlaylist?.zone_id || selectedZoneId;
+            
+            // Apply filters for all roles, not just super_admin
+            if (filterPropertyId) params.propertyId = filterPropertyId;
+            if (filterZoneId) params.zoneId = filterZoneId;
+            
+            const response = await api.get('/templates', { params });
             return response.data.templates || [];
         },
-        enabled: !!user?.tenantId
+        enabled: !!user?.tenantId && (!!selectedPlaylist || !!selectedPropertyId || user?.role !== 'super_admin')
     });
 
     // Create playlist mutation
@@ -66,14 +88,19 @@ export default function Playlists() {
             const response = await api.post('/schedules/playlists', {
                 ...data,
                 tenantId: user.tenantId,
-                userId: user.id
+                userId: user.id,
+                propertyId: selectedPropertyId || undefined,
+                zoneId: selectedZoneId || undefined
             });
             return response.data;
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
             queryClient.invalidateQueries(['playlists']);
+            // Auto-select the newly created playlist so user can add media/templates
+            setSelectedPlaylist(data);
             setIsCreating(false);
             setPlaylistName('');
+            // Don't clear property/zone - keep them for filtering media/templates
         }
     });
 
@@ -273,6 +300,11 @@ export default function Playlists() {
             alert('Please enter a playlist name');
             return;
         }
+        
+        if (user?.role === 'super_admin' && !selectedPropertyId) {
+            alert('Please select a property for the playlist');
+            return;
+        }
 
         createMutation.mutate({
             name: playlistName,
@@ -294,6 +326,18 @@ export default function Playlists() {
                     New Playlist
                 </button>
             </div>
+
+            {user?.role === 'super_admin' && !isCreating && !selectedPlaylist && (
+                <div style={{ marginBottom: '20px' }}>
+                    <PropertyZoneSelector
+                        selectedPropertyId={selectedPropertyId}
+                        selectedZoneId={selectedZoneId}
+                        onPropertyChange={setSelectedPropertyId}
+                        onZoneChange={setSelectedZoneId}
+                        required={false}
+                    />
+                </div>
+            )}
 
             {isCreating && (
                 <div className="card create-playlist-card">
@@ -326,6 +370,15 @@ export default function Playlists() {
                                 <option value="cut">Cut</option>
                             </select>
                         </div>
+                        <div className="form-group">
+                            <PropertyZoneSelector
+                                selectedPropertyId={selectedPropertyId}
+                                selectedZoneId={selectedZoneId}
+                                onPropertyChange={setSelectedPropertyId}
+                                onZoneChange={setSelectedZoneId}
+                                required={user?.role === 'super_admin'}
+                            />
+                        </div>
                     </div>
                     <div className="form-actions">
                         <button className="btn btn-primary" onClick={handleCreatePlaylist}>
@@ -353,6 +406,19 @@ export default function Playlists() {
                             {playlist.transition_effect} · {playlist.transition_duration_ms}ms
                         </p>
                         <div className="playlist-actions">
+                            {user?.role === 'super_admin' && (
+                                <button
+                                    className="btn-icon"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSharingPlaylist(playlist);
+                                        setShareModalOpen(true);
+                                    }}
+                                    title="Share Playlist"
+                                >
+                                    <Share2 size={16} />
+                                </button>
+                            )}
                             <button
                                 className="btn-icon"
                                 onClick={(e) => {
@@ -394,6 +460,11 @@ export default function Playlists() {
                                 <Trash2 size={16} />
                             </button>
                         </div>
+                        {playlist.is_shared && (
+                            <span className="shared-badge" style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#1976d2' }}>
+                                <Share2 size={12} /> Shared
+                            </span>
+                        )}
                     </div>
                 ))}
             </div>
@@ -526,6 +597,20 @@ export default function Playlists() {
                 <PlaylistPreview
                     playlistId={previewPlaylist.id}
                     onClose={() => setPreviewPlaylist(null)}
+                />
+            )}
+
+            {shareModalOpen && sharingPlaylist && (
+                <ContentShareModal
+                    isOpen={shareModalOpen}
+                    onClose={() => {
+                        setShareModalOpen(false);
+                        setSharingPlaylist(null);
+                    }}
+                    contentId={sharingPlaylist.id}
+                    contentType="playlist"
+                    currentSharedProperties={sharingPlaylist.sharedWithProperties || []}
+                    isShared={sharingPlaylist.isShared || false}
                 />
             )}
 

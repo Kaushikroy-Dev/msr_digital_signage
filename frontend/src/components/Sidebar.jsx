@@ -15,7 +15,7 @@ import { useAuthStore } from '../store/authStore';
 import './Sidebar.css';
 
 const menuItems = [
-    { path: '/properties', icon: Building2, label: 'Organization' },
+    { path: '/properties', icon: Building2, label: 'Organization', requiresRoles: ['super_admin', 'property_admin'] },
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/media', icon: Image, label: 'Media Library' },
     { path: '/templates', icon: LayoutIcon, label: 'Templates' },
@@ -32,6 +32,9 @@ export default function Sidebar() {
     const visibleMenuItems = menuItems.filter(item => {
         if (item.requiresRole) {
             return user?.role === item.requiresRole;
+        }
+        if (item.requiresRoles) {
+            return item.requiresRoles.includes(user?.role);
         }
         return true;
     });

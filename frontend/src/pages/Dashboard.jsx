@@ -1,17 +1,35 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Monitor, Image, ListVideo, Calendar, Activity, AlertCircle } from 'lucide-react';
+import { Monitor, Image, ListVideo, Calendar, Activity, AlertCircle, Building2 } from 'lucide-react';
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import './Dashboard.css';
 
 export default function Dashboard() {
     const { user } = useAuthStore();
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
+
+    // Fetch properties list for super_admin dropdown
+    const { data: properties } = useQuery({
+        queryKey: ['properties', user?.tenantId],
+        queryFn: async () => {
+            const response = await api.get('/devices/properties', {
+                params: { tenantId: user?.tenantId }
+            });
+            return response.data.properties;
+        },
+        enabled: !!user?.tenantId && user?.role === 'super_admin'
+    });
 
     // Fetch dashboard stats
     const { data: stats, isLoading: statsLoading, isError: statsError } = useQuery({
-        queryKey: ['dashboard-stats'],
+        queryKey: ['dashboard-stats', selectedPropertyId],
         queryFn: async () => {
-            const response = await api.get('/analytics/dashboard-stats');
+            const params = {};
+            if (user?.role === 'super_admin' && selectedPropertyId) {
+                params.propertyId = selectedPropertyId;
+            }
+            const response = await api.get('/analytics/dashboard-stats', { params });
             return response.data;
         }
     });
@@ -63,6 +81,31 @@ export default function Dashboard() {
                     <h1>Welcome back, {user?.firstName}!</h1>
                     <p>Here's what's happening with your digital signage network</p>
                 </div>
+                {user?.role === 'super_admin' && properties && properties.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <Building2 size={20} style={{ color: '#666' }} />
+                        <select
+                            value={selectedPropertyId}
+                            onChange={(e) => setSelectedPropertyId(e.target.value)}
+                            style={{
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                border: '1px solid #ddd',
+                                fontSize: '14px',
+                                minWidth: '200px',
+                                background: 'white',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value="">All Properties</option>
+                            {properties.map(property => (
+                                <option key={property.id} value={property.id}>
+                                    {property.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
             </div>
 
             <div className="grid grid-4">

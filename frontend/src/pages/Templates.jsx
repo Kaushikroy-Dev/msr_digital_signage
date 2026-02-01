@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { DndContext, useDroppable, DragOverlay, closestCenter } from '@dnd-kit/core';
 import { useSensors, useSensor, PointerSensor, MouseSensor } from '@dnd-kit/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Save, Layout as LayoutIcon, Grid, Type, Image as ImageIcon, Clock, Cloud, QrCode, Globe, Undo, Redo, Eye } from 'lucide-react';
+import { Plus, Save, Layout as LayoutIcon, Grid, Type, Image as ImageIcon, Clock, Cloud, QrCode, Globe, Undo, Redo, Eye, Maximize2, Timer, Rss, LayoutGrid, Shapes, Twitter, BarChart3, Code, Copy, History, RotateCcw, Share2, Download, Upload, Variable, RefreshCw, BarChart2, Play, ArrowLeft } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import { snapToGrid, getAlignmentGuides } from '../utils/canvasUtils';
+import { snapToGrid, getAlignmentGuides, applySmartSnap } from '../utils/canvasUtils';
 import * as alignmentUtils from '../utils/alignmentUtils';
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
@@ -16,7 +16,19 @@ import ColorPicker from '../components/ColorPicker';
 import ZoomControls from '../components/ZoomControls';
 import PropertiesPanel from '../components/PropertiesPanel';
 import CanvasToolbar from '../components/CanvasToolbar';
+import BackgroundImagePicker from '../components/BackgroundImagePicker';
+import TemplateLivePreview from '../components/TemplateLivePreview';
+import TemplateTester from '../components/TemplateTester';
+import TemplateAnalytics from '../components/TemplateAnalytics';
+import QuickActionMenu from '../components/QuickActionMenu';
+import VariableEditor from '../components/VariableEditor';
+import DataBindingPanel from '../components/DataBindingPanel';
+import TemplateShareModal from '../components/TemplateShareModal';
+import ContentShareModal from '../components/ContentShareModal';
+import PropertyZoneSelector from '../components/PropertyZoneSelector';
+import { debounce } from '../utils/debounce';
 import { useTemplateUndoRedo } from '../hooks/useTemplateUndoRedo';
+import { validateTemplate } from '../utils/templateValidation';
 import './TemplateDesigner.css';
 
 const WIDGETS = [
@@ -25,6 +37,13 @@ const WIDGETS = [
     { id: 'qrcode', name: 'QR Code', icon: QrCode, color: '#7c4dff' },
     { id: 'webview', name: 'Web View', icon: Globe, color: '#43a047' },
     { id: 'text', name: 'Text', icon: Type, color: '#ff9800' },
+    { id: 'countdown', name: 'Countdown', icon: Timer, color: '#e91e63' },
+    { id: 'rss', name: 'RSS Feed', icon: Rss, color: '#ff5722' },
+    { id: 'imagegallery', name: 'Image Gallery', icon: LayoutGrid, color: '#9c27b0' },
+    { id: 'shape', name: 'Shape', icon: Shapes, color: '#607d8b' },
+    { id: 'socialmedia', name: 'Social Media', icon: Twitter, color: '#1da1f2' },
+    { id: 'chart', name: 'Chart', icon: BarChart3, color: '#4caf50' },
+    { id: 'html', name: 'HTML', icon: Code, color: '#795548' },
 ];
 
 const RESOLUTIONS = [
@@ -78,6 +97,8 @@ export default function TemplateDesigner() {
     const [isEditing, setIsEditing] = useState(false);
     const [templateName, setTemplateName] = useState('');
     const [templateDescription, setTemplateDescription] = useState('');
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
+    const [selectedZoneId, setSelectedZoneId] = useState('');
     const [resolution, setResolution] = useState(RESOLUTIONS[0]);
     const [zones, setZones] = useState([]);
     const [selectedZoneIds, setSelectedZoneIds] = useState([]);
@@ -95,6 +116,28 @@ export default function TemplateDesigner() {
     const [alignmentGuides, setAlignmentGuides] = useState({ vertical: [], horizontal: [] });
     const isUndoRedoUpdateRef = useRef(false);
     const [clipboard, setClipboard] = useState([]);
+    const [showLivePreview, setShowLivePreview] = useState(false);
+    const [showTester, setShowTester] = useState(false);
+    const [showSaveAs, setShowSaveAs] = useState(false);
+    const [saveAsName, setSaveAsName] = useState('');
+    const [showVersionHistory, setShowVersionHistory] = useState(false);
+    const [versionHistoryTemplate, setVersionHistoryTemplate] = useState(null);
+    const [selectedCategory, setSelectedCategory] = useState('all');
+    const [selectedTags, setSelectedTags] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortBy, setSortBy] = useState('created_at');
+    const [sortOrder, setSortOrder] = useState('DESC');
+    const [showThumbnailUpload, setShowThumbnailUpload] = useState(false);
+    const [showAnalytics, setShowAnalytics] = useState(false);
+    const [analyticsTemplate, setAnalyticsTemplate] = useState(null);
+    const [showQuickActions, setShowQuickActions] = useState(false);
+    const [showVariableEditor, setShowVariableEditor] = useState(false);
+    const [templateVariables, setTemplateVariables] = useState({});
+    const [showDataBindingPanel, setShowDataBindingPanel] = useState(false);
+    const [dataBindingZone, setDataBindingZone] = useState(null);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [showPropertyShareModal, setShowPropertyShareModal] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     const { currentZones, pushToHistory, undo, redo, canUndo, canRedo } = useTemplateUndoRedo(zones);
 
@@ -139,22 +182,57 @@ export default function TemplateDesigner() {
     }, [zones, selectedZoneIds, handleZonesChange]);
 
     const handleCopy = useCallback(() => {
+        if (selectedZoneIds.length === 0) return;
+
         const selectedZones = zones.filter(z => selectedZoneIds.includes(z.id));
-        setClipboard(selectedZones.map(z => ({ ...z, id: `${z.id}-copy-${Date.now()}` })));
+        if (selectedZones.length === 0) return;
+
+        // Deep clone zones to avoid reference issues
+        const copiedZones = selectedZones.map(z => ({
+            ...z,
+            widgetConfig: z.widgetConfig ? { ...z.widgetConfig } : {},
+            mediaAsset: z.mediaAsset ? { ...z.mediaAsset } : null
+        }));
+
+        setClipboard(copiedZones);
+
+        // Show visual feedback (toast notification)
+        if (window.showToast) {
+            window.showToast(`Copied ${copiedZones.length} zone(s)`, 'success');
+        } else {
+            console.log(`Copied ${copiedZones.length} zone(s)`);
+        }
     }, [zones, selectedZoneIds]);
 
-    const handlePaste = useCallback(() => {
-        if (clipboard.length === 0) return;
+    const handlePaste = useCallback((withOffset = true) => {
+        if (clipboard.length === 0) {
+            if (window.showToast) {
+                window.showToast('Clipboard is empty', 'info');
+            }
+            return;
+        }
 
-        const newZones = clipboard.map(z => ({
+        const offset = withOffset ? 20 : 0;
+        const timestamp = Date.now();
+
+        const newZones = clipboard.map((z, index) => ({
             ...z,
-            id: `zone-${Date.now()}-${Math.random()}`,
-            x: z.x + 20,
-            y: z.y + 20
+            id: `zone-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+            x: z.x + offset,
+            y: z.y + offset,
+            // Remove mediaAsset reference (will be reloaded if needed)
+            mediaAsset: undefined
         }));
 
         handleZonesChange([...zones, ...newZones]);
         setSelectedZoneIds(newZones.map(z => z.id));
+
+        // Show visual feedback
+        if (window.showToast) {
+            window.showToast(`Pasted ${newZones.length} zone(s)`, 'success');
+        } else {
+            console.log(`Pasted ${newZones.length} zone(s)`);
+        }
     }, [clipboard, zones, handleZonesChange]);
 
     // Alignment operations
@@ -248,6 +326,51 @@ export default function TemplateDesigner() {
             handleZonesChange(alignmentUtils.ungroupZones(zones, selectedZoneIds[0]));
             setSelectedZoneIds([]);
         }
+    }, [zones, selectedZoneIds, handleZonesChange]);
+
+    const handleMatchWidth = useCallback(() => {
+        const selectedZones = zones.filter(z => selectedZoneIds.includes(z.id));
+        const matched = alignmentUtils.matchWidth(selectedZones);
+        handleZonesChange(zones.map(z => {
+            const matchedZone = matched.find(mz => mz.id === z.id);
+            return matchedZone || z;
+        }));
+    }, [zones, selectedZoneIds, handleZonesChange]);
+
+    const handleMatchHeight = useCallback(() => {
+        const selectedZones = zones.filter(z => selectedZoneIds.includes(z.id));
+        const matched = alignmentUtils.matchHeight(selectedZones);
+        handleZonesChange(zones.map(z => {
+            const matchedZone = matched.find(mz => mz.id === z.id);
+            return matchedZone || z;
+        }));
+    }, [zones, selectedZoneIds, handleZonesChange]);
+
+    const handleMatchSize = useCallback(() => {
+        const selectedZones = zones.filter(z => selectedZoneIds.includes(z.id));
+        const matched = alignmentUtils.matchSize(selectedZones);
+        handleZonesChange(zones.map(z => {
+            const matchedZone = matched.find(mz => mz.id === z.id);
+            return matchedZone || z;
+        }));
+    }, [zones, selectedZoneIds, handleZonesChange]);
+
+    const handleCenterOnCanvas = useCallback(() => {
+        const selectedZones = zones.filter(z => selectedZoneIds.includes(z.id));
+        const centered = alignmentUtils.centerOnCanvas(selectedZones, resolution.width, resolution.height);
+        handleZonesChange(zones.map(z => {
+            const centeredZone = centered.find(cz => cz.id === z.id);
+            return centeredZone || z;
+        }));
+    }, [zones, selectedZoneIds, handleZonesChange, resolution.width, resolution.height]);
+
+    const handleAlignToGrid = useCallback(() => {
+        const selectedZones = zones.filter(z => selectedZoneIds.includes(z.id));
+        const aligned = alignmentUtils.alignToGrid(selectedZones, 10);
+        handleZonesChange(zones.map(z => {
+            const alignedZone = aligned.find(az => az.id === z.id);
+            return alignedZone || z;
+        }));
     }, [zones, selectedZoneIds, handleZonesChange]);
 
     // Handle click to add widget (alternative to drag-and-drop)
@@ -383,7 +506,13 @@ export default function TemplateDesigner() {
                 let newX = zone.x + deltaX;
                 let newY = zone.y + deltaY;
 
-                if (snapToGridEnabled) {
+                // Apply smart snap to other zones (if not snapping to grid)
+                if (!snapToGridEnabled) {
+                    const tempZone = { ...zone, x: newX, y: newY };
+                    const snappedZone = applySmartSnap(tempZone, zones.filter(z => z.id !== zone.id), 10);
+                    newX = snappedZone.x;
+                    newY = snappedZone.y;
+                } else {
                     newX = snapToGrid(newX, 10);
                     newY = snapToGrid(newY, 10);
                 }
@@ -458,17 +587,36 @@ export default function TemplateDesigner() {
         }
     }, [currentZones]);
 
-    // Fetch templates
+    // Fetch templates with filters
     const { data: templates } = useQuery({
-        queryKey: ['templates', user?.tenantId],
+        queryKey: ['templates', user?.tenantId, selectedCategory, selectedTags, searchTerm, sortBy, sortOrder, selectedPropertyId, selectedZoneId],
         queryFn: async () => {
-            const response = await api.get('/templates/templates', {
-                params: { tenantId: user?.tenantId }
-            });
+            const params = {
+                tenantId: user?.tenantId,
+                sortBy,
+                sortOrder
+            };
+            if (selectedCategory !== 'all') {
+                params.category = selectedCategory;
+            }
+            if (selectedTags.length > 0) {
+                params.tags = selectedTags;
+            }
+            if (searchTerm.trim()) {
+                params.search = searchTerm.trim();
+            }
+            if (user?.role === 'super_admin') {
+                if (selectedPropertyId) params.propertyId = selectedPropertyId;
+                if (selectedZoneId) params.zoneId = selectedZoneId;
+            }
+            const response = await api.get('/templates', { params });
             return response.data.templates || [];
         },
         enabled: !!user?.tenantId
     });
+
+    // Get all unique tags from templates for filter
+    const allTags = templates ? [...new Set(templates.flatMap(t => t.tags || []))] : [];
 
     // Fetch media assets
     const { data: assets } = useQuery({
@@ -510,58 +658,230 @@ export default function TemplateDesigner() {
     // Create template mutation
     const createMutation = useMutation({
         mutationFn: async (templateData) => {
-            const response = await api.post('/templates/templates', {
-                ...templateData,
-                tenantId: user.tenantId,
-                userId: user.id
-            });
+            const response = await api.post('/templates', templateData);
             return response.data;
         },
         onSuccess: () => {
             queryClient.invalidateQueries(['templates']);
             setIsCreating(false);
             resetTemplate();
+            alert('Template saved successfully!');
+        },
+        onError: (error) => {
+            console.error('Error saving template:', error);
+            console.error('Error response:', error.response?.data);
+            console.error('Error status:', error.response?.status);
+            const errorMessage = error.response?.data?.details || error.response?.data?.error || error.message;
+            alert('Failed to save template: ' + errorMessage);
         }
     });
 
     // Update template mutation
     const updateMutation = useMutation({
         mutationFn: async ({ id, templateData }) => {
-            const response = await api.put(`/templates/templates/${id}`, templateData);
+            const response = await api.put(`/templates/${id}`, templateData);
             return response.data;
         },
         onSuccess: () => {
             queryClient.invalidateQueries(['templates']);
             setIsEditing(false);
             resetTemplate();
+            alert('Template updated successfully!');
+        },
+        onError: (error) => {
+            console.error('Error updating template:', error);
+            alert('Failed to update template: ' + (error.response?.data?.error || error.message));
         }
     });
 
     // Delete template mutation
     const deleteMutation = useMutation({
         mutationFn: async (id) => {
-            await api.delete(`/templates/templates/${id}`);
+            await api.delete(`/templates/${id}`);
         },
         onSuccess: () => {
             queryClient.invalidateQueries(['templates']);
+            alert('Template deleted successfully!');
+        },
+        onError: (error) => {
+            console.error('Error deleting template:', error);
+            alert('Failed to delete template: ' + (error.response?.data?.error || error.message));
         }
     });
+
+    const duplicateMutation = useMutation({
+        mutationFn: async (templateId) => {
+            const response = await api.post(`/templates/${templateId}/duplicate`);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['templates', user?.tenantId]);
+            alert('Template duplicated successfully!');
+        },
+        onError: (error) => {
+            console.error('Error duplicating template:', error);
+            alert('Failed to duplicate template: ' + (error.response?.data?.error || error.message));
+        }
+    });
+
+    const saveAsMutation = useMutation({
+        mutationFn: async ({ templateId, name, description }) => {
+            const response = await api.post(`/templates/${templateId}/save-as`, {
+                name,
+                description
+            });
+            return response.data;
+        },
+        onSuccess: (newTemplate) => {
+            queryClient.invalidateQueries(['templates', user?.tenantId]);
+            setShowSaveAs(false);
+            setSaveAsName('');
+            handleEditTemplate(newTemplate);
+        }
+    });
+
+    const { data: templateVersions } = useQuery({
+        queryKey: ['template-versions', versionHistoryTemplate?.id],
+        queryFn: async () => {
+            if (!versionHistoryTemplate) return { versions: [] };
+            const response = await api.get(`/templates/${versionHistoryTemplate.id}/versions`);
+            return response.data;
+        },
+        enabled: !!versionHistoryTemplate && showVersionHistory
+    });
+
+    const restoreVersionMutation = useMutation({
+        mutationFn: async ({ templateId, versionId }) => {
+            const response = await api.post(`/templates/${templateId}/versions/${versionId}/restore`);
+            return response.data;
+        },
+        onSuccess: (restoredTemplate) => {
+            queryClient.invalidateQueries(['templates', user?.tenantId]);
+            queryClient.invalidateQueries(['template-versions', versionHistoryTemplate?.id]);
+            handleEditTemplate(restoredTemplate);
+            setShowVersionHistory(false);
+        }
+    });
+
+    const generateThumbnailMutation = useMutation({
+        mutationFn: async ({ templateId, thumbnailBlob, propertyId, zoneId }) => {
+            const formData = new FormData();
+            formData.append('file', thumbnailBlob, `template-${templateId}-thumbnail.png`);
+            formData.append('tenantId', user?.tenantId);
+            formData.append('userId', user?.id || user?.userId);
+
+            // Add property/zone for super_admin
+            if (user?.role === 'super_admin') {
+                if (propertyId) {
+                    formData.append('propertyId', propertyId);
+                }
+                if (zoneId) {
+                    formData.append('zoneId', zoneId);
+                }
+            } else if (user?.role === 'property_admin') {
+                // Property is auto-assigned, but zone needs to be provided
+                if (zoneId) {
+                    formData.append('zoneId', zoneId);
+                }
+            }
+            // zone_admin and content_editor will have property/zone auto-assigned by backend
+
+            // Upload to media library
+            const uploadResponse = await api.post('/content/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            const asset = uploadResponse.data;
+
+            // Update template with thumbnail path
+            const updateResponse = await api.put(`/templates/${templateId}`, {
+                preview_image_path: asset.url || asset.thumbnailUrl
+            });
+
+            return updateResponse.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['templates']);
+            alert('Thumbnail generated successfully!');
+        },
+        onError: (error) => {
+            console.error('Error generating thumbnail:', error);
+            alert('Failed to generate thumbnail: ' + (error.response?.data?.error || error.message));
+        }
+    });
+
+    const handleGenerateThumbnail = async () => {
+        if (!selectedTemplate) {
+            alert('Please select a template first');
+            return;
+        }
+
+        try {
+            // Find the canvas container element
+            const canvasElement = document.querySelector('.designer-canvas-container');
+            if (!canvasElement) {
+                alert('Canvas not found. Please ensure the template is open in the designer.');
+                return;
+            }
+
+            const html2canvas = (await import('html2canvas')).default;
+            const canvas = await html2canvas(canvasElement, {
+                backgroundColor: backgroundColor || '#ffffff',
+                scale: 0.5,
+                useCORS: true,
+                logging: false,
+                allowTaint: true,
+                width: resolution.width,
+                height: resolution.height
+            });
+
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    // Get property/zone from template or current selection
+                    const propertyId = selectedTemplate?.property_id || selectedPropertyId;
+                    const zoneId = selectedTemplate?.zone_id || selectedZoneId;
+
+                    // Validate property for super_admin
+                    if (user?.role === 'super_admin' && !propertyId) {
+                        alert('Please select a property before generating thumbnail');
+                        return;
+                    }
+
+                    generateThumbnailMutation.mutate({
+                        templateId: selectedTemplate.id,
+                        thumbnailBlob: blob,
+                        propertyId: propertyId || undefined,
+                        zoneId: zoneId || undefined
+                    });
+                } else {
+                    alert('Failed to generate thumbnail blob');
+                }
+            }, 'image/png', 0.9);
+        } catch (error) {
+            console.error('Thumbnail generation failed:', error);
+            alert('Failed to generate thumbnail: ' + error.message);
+        }
+    };
 
     const resetTemplate = () => {
         setTemplateName('');
         setTemplateDescription('');
+        setSelectedPropertyId('');
+        setSelectedZoneId('');
         setZones([]);
         setSelectedZoneIds([]);
         setBackgroundColor('#ffffff');
         setBackgroundImageId(null);
         setBackgroundImage(null);
         setSelectedTemplate(null);
+        setSidebarCollapsed(false);
     };
 
     const handleCreateNew = () => {
         setIsCreating(true);
         setIsEditing(false);
         resetTemplate();
+        setSidebarCollapsed(false); // Show sidebar by default
     };
 
     const handleEditTemplate = (template) => {
@@ -574,8 +894,11 @@ export default function TemplateDesigner() {
             setSelectedTemplate(template);
             setIsEditing(true);
             setIsCreating(false);
+            setSidebarCollapsed(false); // Show sidebar by default
             setTemplateName(template.name || '');
             setTemplateDescription(template.description || '');
+            setSelectedPropertyId(template.property_id || '');
+            setSelectedZoneId(template.zone_id || '');
             setResolution({
                 width: template.width || 1920,
                 height: template.height || 1080
@@ -642,35 +965,177 @@ export default function TemplateDesigner() {
     }, [zones, handleZonesChange]);
 
     const handleWidgetConfigChange = useCallback((zoneId, config) => {
-        handleZonesChange(zones.map(z =>
-            z.id === zoneId ? { ...z, widgetConfig: config } : z
-        ));
+        handleZonesChange(zones.map(z => {
+            if (z.id === zoneId) {
+                // For media zones, config might be the updated zone object itself
+                if (z.contentType === 'media' && config.mediaFit !== undefined) {
+                    return { ...z, ...config };
+                }
+                // For widget zones, update widgetConfig
+                return { ...z, widgetConfig: config };
+            }
+            return z;
+        }));
     }, [zones, handleZonesChange]);
 
+    const handleExportTemplate = useCallback(async () => {
+        if (!selectedTemplate || !isEditing) {
+            alert('Please select a template to export.');
+            return;
+        }
+
+        try {
+            const response = await api.get(`/templates/${selectedTemplate.id}/export`);
+            const templateData = response.data;
+
+            // Create a blob and download
+            const blob = new Blob([JSON.stringify(templateData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${templateName || selectedTemplate.name || 'template'}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Error exporting template:', error);
+            alert('Failed to export template: ' + (error.response?.data?.error || error.message));
+        }
+    }, [selectedTemplate, isEditing, templateName]);
+
+    const handleImportTemplate = useCallback(async (file) => {
+        try {
+            const text = await file.text();
+            const templateData = JSON.parse(text);
+
+            // Validate the imported template data
+            if (!templateData.name || !templateData.width || !templateData.height || !Array.isArray(templateData.zones)) {
+                alert('Invalid template file format.');
+                return;
+            }
+
+            // Create a new template from the imported data
+            const importData = {
+                name: `${templateData.name} (Imported)`,
+                description: templateData.description || '',
+                category: templateData.category || 'custom',
+                tags: templateData.tags || [],
+                width: templateData.width,
+                height: templateData.height,
+                orientation: templateData.orientation || (templateData.width > templateData.height ? 'landscape' : 'portrait'),
+                background_color: templateData.background_color || '#ffffff',
+                background_image_id: templateData.background_image_id || null,
+                zones: templateData.zones || [],
+                variables: templateData.variables || []
+            };
+
+            const response = await api.post('/templates/import', {
+                ...importData,
+                tenantId: user?.tenantId,
+                userId: user?.id
+            });
+
+            if (response.data) {
+                queryClient.invalidateQueries(['templates']);
+                alert('Template imported successfully!');
+                // Optionally, open the imported template for editing
+                handleEditTemplate(response.data);
+            }
+        } catch (error) {
+            console.error('Error importing template:', error);
+            alert('Failed to import template: ' + (error.response?.data?.error || error.message));
+        }
+    }, [user, queryClient]);
+
     const handleSaveTemplate = () => {
+        console.log('=== Save Template Called ===');
+        console.log('Template Name:', templateName);
+        console.log('Selected Property ID:', selectedPropertyId);
+        console.log('Resolution:', resolution);
+        console.log('Zones:', zones);
+        console.log('Is Editing:', isEditing);
+        console.log('Selected Template:', selectedTemplate);
+
         if (!templateName.trim()) {
+            console.error('Validation failed: Template name is empty');
             alert('Please enter a template name');
             return;
+        }
+
+        // Validate template before saving
+        const templateForValidation = {
+            name: templateName,
+            width: resolution.width,
+            height: resolution.height
+        };
+
+        const validation = validateTemplate(templateForValidation, zones, mediaAssets);
+        console.log('Validation result:', validation);
+
+        // Log errors and warnings
+        if (validation.errors.length > 0) {
+            console.error('Validation errors:', validation.errors);
+        }
+        if (validation.warnings.length > 0) {
+            console.warn('Validation warnings:', validation.warnings);
+        }
+
+        // Show errors if any - but allow user to proceed
+        if (!validation.isValid) {
+            const errorMessages = validation.errors.map(e => e.message).join('\n');
+            const warningMessages = validation.warnings.map(w => w.message).join('\n');
+
+            let message = 'Template validation failed:\n\n' + errorMessages;
+            if (warningMessages) {
+                message += '\n\nWarnings:\n' + warningMessages;
+            }
+
+            console.log('Showing confirmation dialog for validation errors');
+            const userConfirmed = confirm(message + '\n\nDo you want to save anyway?');
+            console.log('User confirmed:', userConfirmed);
+
+            if (!userConfirmed) {
+                console.log('User cancelled save due to validation errors');
+                return;
+            }
+        } else if (validation.warnings.length > 0) {
+            const warningMessages = validation.warnings.map(w => w.message).join('\n');
+            console.log('Showing confirmation dialog for validation warnings');
+            const userConfirmed = confirm('Template validation warnings:\n\n' + warningMessages + '\n\nDo you want to save anyway?');
+            console.log('User confirmed:', userConfirmed);
+
+            if (!userConfirmed) {
+                console.log('User cancelled save due to validation warnings');
+                return;
+            }
         }
 
         const templateData = {
             name: templateName,
             description: templateDescription,
-            category: 'custom',
+            category: selectedCategory !== 'all' ? selectedCategory : 'custom',
+            tags: selectedTags,
             width: resolution.width,
             height: resolution.height,
             orientation: resolution.width > resolution.height ? 'landscape' : 'portrait',
             background_color: backgroundColor,
             background_image_id: backgroundImageId || null,
+            propertyId: selectedPropertyId || undefined,
+            zoneId: selectedZoneId || undefined,
             zones: zones.map(z => ({
                 ...z,
                 mediaAsset: undefined // Don't send full asset object
             }))
         };
 
+        console.log('Template data to save:', templateData);
+
         if (isEditing && selectedTemplate) {
+            console.log('Calling updateMutation with template ID:', selectedTemplate.id);
             updateMutation.mutate({ id: selectedTemplate.id, templateData });
         } else {
+            console.log('Calling createMutation');
             createMutation.mutate(templateData);
         }
     };
@@ -685,6 +1150,26 @@ export default function TemplateDesigner() {
                 e.preventDefault();
                 selectedZoneIds.forEach(id => handleDeleteZone(id));
                 setSelectedZoneIds([]);
+            }
+
+            // Copy/Paste
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedZoneIds.length > 0) {
+                e.preventDefault();
+                handleCopy();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v' && !e.shiftKey) {
+                e.preventDefault();
+                handlePaste(true); // Paste with offset
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v' && e.shiftKey) {
+                e.preventDefault();
+                handlePaste(false); // Paste in place
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedZoneIds.length > 0) {
+                e.preventDefault();
+                // Duplicate (copy + paste)
+                handleCopy();
+                setTimeout(() => handlePaste(true), 10);
             }
 
             // Undo/Redo
@@ -751,9 +1236,27 @@ export default function TemplateDesigner() {
     const selectedZone = zones.find(z => selectedZoneIds.includes(z.id));
 
     return (
-        <div className="template-designer">
+        <div className={`template-designer ${isCreating || isEditing ? 'fullscreen-designer' : ''}`}>
             <div className="designer-header">
-                <h1>Template Designer</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {(isCreating || isEditing) && (
+                        <button
+                            className="btn btn-outline back-button"
+                            onClick={() => {
+                                setIsCreating(false);
+                                setIsEditing(false);
+                                setSelectedTemplate(null);
+                                setSidebarCollapsed(false);
+                                resetTemplate();
+                            }}
+                            title="Back to Templates"
+                        >
+                            <ArrowLeft size={18} />
+                            Back
+                        </button>
+                    )}
+                    <h1>Template Designer</h1>
+                </div>
                 <div className="designer-actions">
                     {isCreating || isEditing ? (
                         <>
@@ -773,13 +1276,128 @@ export default function TemplateDesigner() {
                             >
                                 <Redo size={18} />
                             </button>
+                            <button
+                                className="btn btn-outline"
+                                onClick={() => setShowTester(true)}
+                                title="Test Template"
+                            >
+                                <Eye size={18} />
+                                Test
+                            </button>
+                            <button
+                                className="btn btn-outline"
+                                onClick={() => setShowLivePreview(true)}
+                                title="Preview Template (F11)"
+                            >
+                                <Maximize2 size={18} />
+                                Preview
+                            </button>
+                            {isEditing && (
+                                <button
+                                    className="btn btn-outline"
+                                    onClick={() => {
+                                        setSaveAsName(selectedTemplate?.name || '');
+                                        setShowSaveAs(true);
+                                    }}
+                                    title="Save As New Template"
+                                >
+                                    <Copy size={18} />
+                                    Save As
+                                </button>
+                            )}
                             <button className="btn btn-primary" onClick={handleSaveTemplate}>
                                 <Save size={18} />
                                 {isEditing ? 'Update' : 'Save'} Template
                             </button>
+                            {isEditing && selectedTemplate && (
+                                <>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={handleGenerateThumbnail}
+                                        title="Generate Thumbnail"
+                                        disabled={generateThumbnailMutation.isLoading}
+                                    >
+                                        <RefreshCw size={18} />
+                                        {generateThumbnailMutation.isLoading ? 'Generating...' : 'Thumbnail'}
+                                    </button>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={() => {
+                                            setVersionHistoryTemplate(selectedTemplate);
+                                            setShowVersionHistory(true);
+                                        }}
+                                        title="View Version History"
+                                    >
+                                        <History size={18} />
+                                        Versions
+                                    </button>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={() => {
+                                            setAnalyticsTemplate(selectedTemplate);
+                                            setShowAnalytics(true);
+                                        }}
+                                        title="View Analytics"
+                                    >
+                                        <BarChart2 size={18} />
+                                        Analytics
+                                    </button>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={() => setShowQuickActions(true)}
+                                        title="Quick Actions"
+                                    >
+                                        <Play size={18} />
+                                        Add to Playlist
+                                    </button>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={() => setShowVariableEditor(true)}
+                                        title="Manage Variables"
+                                    >
+                                        <Variable size={18} />
+                                        Variables
+                                    </button>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={() => setShowShareModal(true)}
+                                        title="Share Template with Users"
+                                    >
+                                        <Share2 size={18} />
+                                        Share
+                                    </button>
+                                    {user?.role === 'super_admin' && (
+                                        <button
+                                            className="btn btn-outline"
+                                            onClick={() => setShowPropertyShareModal(true)}
+                                            title="Share Template with Properties"
+                                        >
+                                            <Share2 size={18} />
+                                            Share Property
+                                        </button>
+                                    )}
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={handleExportTemplate}
+                                        title="Export Template"
+                                    >
+                                        <Download size={18} />
+                                        Export
+                                    </button>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={() => document.getElementById('import-template-input')?.click()}
+                                        title="Import Template"
+                                    >
+                                        <Upload size={18} />
+                                        Import
+                                    </button>
+                                </>
+                            )}
                             <button className="btn btn-outline" onClick={() => {
                                 setIsCreating(false);
                                 setIsEditing(false);
+                                setSidebarCollapsed(false);
                                 resetTemplate();
                             }}>
                                 Cancel
@@ -795,40 +1413,151 @@ export default function TemplateDesigner() {
             </div>
 
             {!isCreating && !isEditing ? (
-                <div className="templates-grid">
-                    <div className="template-card new-template" onClick={handleCreateNew}>
-                        <Plus size={48} />
-                        <h3>Create New Template</h3>
-                    </div>
-                    {templates?.map((template) => (
-                        <div key={template.id} className="template-card">
-                            <div className="template-preview">
-                                {template.preview_image_path ? (
-                                    <img src={template.preview_image_path} alt={template.name} />
-                                ) : (
-                                    <LayoutIcon size={32} />
-                                )}
-                            </div>
-                            <h3>{template.name}</h3>
-                            <p>{template.width}x{template.height}</p>
-                            <div className="template-actions">
-                                <button className="btn btn-sm" onClick={() => handleEditTemplate(template)}>
-                                    Edit
-                                </button>
-                                <button
-                                    className="btn btn-sm btn-danger"
-                                    onClick={() => {
-                                        if (confirm('Delete this template?')) {
-                                            deleteMutation.mutate(template.id);
-                                        }
-                                    }}
-                                >
-                                    Delete
-                                </button>
-                            </div>
+                <>
+                    {user?.role === 'super_admin' && (
+                        <div style={{ marginBottom: '20px' }}>
+                            <PropertyZoneSelector
+                                selectedPropertyId={selectedPropertyId}
+                                selectedZoneId={selectedZoneId}
+                                onPropertyChange={setSelectedPropertyId}
+                                onZoneChange={setSelectedZoneId}
+                                required={false}
+                            />
                         </div>
-                    ))}
-                </div>
+                    )}
+                    {/* Filters and Search */}
+                    <div className="templates-filters">
+                        <div className="filter-group">
+                            <label>Category</label>
+                            <select
+                                className="input"
+                                value={selectedCategory}
+                                onChange={(e) => setSelectedCategory(e.target.value)}
+                            >
+                                <option value="all">All Categories</option>
+                                <option value="retail">Retail</option>
+                                <option value="corporate">Corporate</option>
+                                <option value="education">Education</option>
+                                <option value="events">Events</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                        </div>
+                        {allTags.length > 0 && (
+                            <div className="filter-group">
+                                <label>Tags</label>
+                                <div className="tags-filter">
+                                    {allTags.map(tag => (
+                                        <label key={tag} className="tag-checkbox">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedTags.includes(tag)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedTags([...selectedTags, tag]);
+                                                    } else {
+                                                        setSelectedTags(selectedTags.filter(t => t !== tag));
+                                                    }
+                                                }}
+                                            />
+                                            {tag}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div className="filter-group">
+                            <label>Search</label>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="Search templates..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <div className="filter-group">
+                            <label>Sort By</label>
+                            <select
+                                className="input"
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value)}
+                            >
+                                <option value="created_at">Date Created</option>
+                                <option value="updated_at">Last Updated</option>
+                                <option value="name">Name</option>
+                                <option value="category">Category</option>
+                            </select>
+                        </div>
+                        <div className="filter-group">
+                            <label>Order</label>
+                            <select
+                                className="input"
+                                value={sortOrder}
+                                onChange={(e) => setSortOrder(e.target.value)}
+                            >
+                                <option value="DESC">Descending</option>
+                                <option value="ASC">Ascending</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="templates-grid">
+                        <div className="template-card new-template" onClick={handleCreateNew}>
+                            <Plus size={48} />
+                            <h3>Create New Template</h3>
+                        </div>
+                        {templates?.map((template) => (
+                            <div key={template.id} className="template-card">
+                                <div className="template-preview">
+                                    {template.preview_image_path ? (
+                                        <img src={template.preview_image_path} alt={template.name} />
+                                    ) : (
+                                        <LayoutIcon size={32} />
+                                    )}
+                                </div>
+                                <h3>{template.name}</h3>
+                                <p>{template.width}x{template.height}</p>
+                                {template.category && (
+                                    <span className="template-category">{template.category}</span>
+                                )}
+                                {template.tags && template.tags.length > 0 && (
+                                    <div className="template-tags">
+                                        {template.tags.slice(0, 3).map(tag => (
+                                            <span key={tag} className="tag-badge">{tag}</span>
+                                        ))}
+                                        {template.tags.length > 3 && (
+                                            <span className="tag-badge">+{template.tags.length - 3}</span>
+                                        )}
+                                    </div>
+                                )}
+                                <div className="template-actions">
+                                    <button className="btn btn-sm" onClick={() => handleEditTemplate(template)}>
+                                        Edit
+                                    </button>
+                                    <button
+                                        className="btn btn-sm btn-outline"
+                                        onClick={() => duplicateMutation.mutate(template.id)}
+                                        title="Duplicate Template"
+                                    >
+                                        <Copy size={14} />
+                                    </button>
+                                    <button
+                                        className="btn btn-sm btn-danger"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (window.confirm(`Are you sure you want to delete "${template.name}"? This action cannot be undone.`)) {
+                                                deleteMutation.mutate(template.id);
+                                            }
+                                        }}
+                                        disabled={deleteMutation.isPending}
+                                    >
+                                        {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </>
             ) : (
                 <DndContext
                     sensors={sensors}
@@ -838,107 +1567,147 @@ export default function TemplateDesigner() {
                     onDragEnd={handleDragEnd}
                 >
                     <div className="designer-workspace">
-                        <div className="designer-sidebar">
-                            <div className="sidebar-tabs">
-                                <button
-                                    className={sidebarTab === 'widgets' ? 'active' : ''}
-                                    onClick={() => setSidebarTab('widgets')}
-                                >
-                                    Widgets
-                                </button>
-                                <button
-                                    className={sidebarTab === 'media' ? 'active' : ''}
-                                    onClick={() => setSidebarTab('media')}
-                                >
-                                    Media
-                                </button>
-                                <button
-                                    className={sidebarTab === 'layers' ? 'active' : ''}
-                                    onClick={() => setSidebarTab('layers')}
-                                >
-                                    Layers
-                                </button>
-                            </div>
+                        <div className={`designer-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+                            {!sidebarCollapsed && (
+                                <>
+                                    <div className="sidebar-tabs">
+                                        <button
+                                            className={sidebarTab === 'widgets' ? 'active' : ''}
+                                            onClick={() => setSidebarTab('widgets')}
+                                        >
+                                            Widgets
+                                        </button>
+                                        <button
+                                            className={sidebarTab === 'media' ? 'active' : ''}
+                                            onClick={() => setSidebarTab('media')}
+                                        >
+                                            Media
+                                        </button>
+                                        <button
+                                            className={sidebarTab === 'layers' ? 'active' : ''}
+                                            onClick={() => setSidebarTab('layers')}
+                                        >
+                                            Layers
+                                        </button>
+                                    </div>
 
-                            <div className="sidebar-content">
-                                {sidebarTab === 'widgets' && (
-                                    <>
-                                        <div className="sidebar-section">
-                                            <h3>Template Info</h3>
-                                            <div className="form-group">
-                                                <label>Template Name</label>
-                                                <input
-                                                    type="text"
-                                                    className="input"
-                                                    value={templateName}
-                                                    onChange={(e) => setTemplateName(e.target.value)}
-                                                    placeholder="Enter template name"
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Description</label>
-                                                <textarea
-                                                    className="input"
-                                                    value={templateDescription}
-                                                    onChange={(e) => setTemplateDescription(e.target.value)}
-                                                    placeholder="Template description"
-                                                    rows="2"
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Resolution</label>
-                                                <select
-                                                    className="input"
-                                                    value={JSON.stringify(resolution)}
-                                                    onChange={(e) => setResolution(JSON.parse(e.target.value))}
-                                                >
-                                                    {RESOLUTIONS.map((res, idx) => (
-                                                        <option key={idx} value={JSON.stringify(res)}>
-                                                            {res.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <ColorPicker
-                                                label="Background Color"
-                                                value={backgroundColor}
-                                                onChange={setBackgroundColor}
-                                            />
-                                        </div>
-
-                                        <div className="sidebar-section">
-                                            <h3>Widgets</h3>
-                                            <div className="widgets-grid">
-                                                {WIDGETS.map((widget) => (
-                                                    <DraggableWidget
-                                                        key={widget.id}
-                                                        widget={widget}
-                                                        onAddWidget={handleAddWidget}
+                                    <div className="sidebar-content">
+                                        {sidebarTab === 'widgets' && (
+                                            <>
+                                                <div className="sidebar-section">
+                                                    <h3>Template Info</h3>
+                                                    <div className="form-group">
+                                                        <label>Template Name</label>
+                                                        <input
+                                                            type="text"
+                                                            className="input"
+                                                            value={templateName}
+                                                            onChange={(e) => setTemplateName(e.target.value)}
+                                                            placeholder="Enter template name"
+                                                        />
+                                                    </div>
+                                                    <div className="form-group">
+                                                        <label>Description</label>
+                                                        <textarea
+                                                            className="input"
+                                                            value={templateDescription}
+                                                            onChange={(e) => setTemplateDescription(e.target.value)}
+                                                            placeholder="Template description"
+                                                            rows="2"
+                                                        />
+                                                    </div>
+                                                    {(isCreating || isEditing) && (
+                                                        <div className="form-group">
+                                                            <PropertyZoneSelector
+                                                                selectedPropertyId={selectedPropertyId}
+                                                                selectedZoneId={selectedZoneId}
+                                                                onPropertyChange={setSelectedPropertyId}
+                                                                onZoneChange={setSelectedZoneId}
+                                                                required={user?.role === 'super_admin'}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div className="form-group">
+                                                        <label>Resolution</label>
+                                                        <select
+                                                            className="input"
+                                                            value={JSON.stringify(resolution)}
+                                                            onChange={(e) => setResolution(JSON.parse(e.target.value))}
+                                                        >
+                                                            {RESOLUTIONS.map((res, idx) => (
+                                                                <option key={idx} value={JSON.stringify(res)}>
+                                                                    {res.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <ColorPicker
+                                                        label="Background Color"
+                                                        value={backgroundColor}
+                                                        onChange={setBackgroundColor}
                                                     />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
+                                                    <div className="form-group">
+                                                        <label>Background Image</label>
+                                                        <BackgroundImagePicker
+                                                            value={backgroundImageId}
+                                                            onChange={(assetId) => {
+                                                                const asset = mediaAssets.find(a => a.id === assetId);
+                                                                if (asset) {
+                                                                    setBackgroundImageId(assetId);
+                                                                    setBackgroundImage({ id: assetId, url: asset.url });
+                                                                }
+                                                            }}
+                                                            onRemove={() => {
+                                                                setBackgroundImageId(null);
+                                                                setBackgroundImage(null);
+                                                            }}
+                                                            mediaAssets={mediaAssets}
+                                                        />
+                                                    </div>
+                                                </div>
 
-                                {sidebarTab === 'media' && (
-                                    <MediaLibraryPanel
-                                        searchTerm={mediaSearchTerm}
-                                        onSearchChange={setMediaSearchTerm}
-                                        onAddMedia={handleAddMedia}
-                                    />
-                                )}
+                                                <div className="sidebar-section">
+                                                    <h3>Widgets</h3>
+                                                    <div className="widgets-grid">
+                                                        {WIDGETS.map((widget) => (
+                                                            <DraggableWidget
+                                                                key={widget.id}
+                                                                widget={widget}
+                                                                onAddWidget={handleAddWidget}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
 
-                                {sidebarTab === 'layers' && (
-                                    <LayerPanel
-                                        zones={zones}
-                                        selectedZoneIds={selectedZoneIds}
-                                        onSelectZone={handleSelectZone}
-                                        onZonesChange={handleZonesChange}
-                                        onDeleteZone={handleDeleteZone}
-                                    />
-                                )}
-                            </div>
+                                        {sidebarTab === 'media' && (
+                                            <MediaLibraryPanel
+                                                searchTerm={mediaSearchTerm}
+                                                onSearchChange={setMediaSearchTerm}
+                                                onAddMedia={handleAddMedia}
+                                            />
+                                        )}
+
+                                        {sidebarTab === 'layers' && (
+                                            <LayerPanel
+                                                zones={zones}
+                                                selectedZoneIds={selectedZoneIds}
+                                                onSelectZone={handleSelectZone}
+                                                onZonesChange={handleZonesChange}
+                                                onDeleteZone={handleDeleteZone}
+                                            />
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                            <button
+                                className="sidebar-toggle"
+                                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                                title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                            >
+                                {sidebarCollapsed ? '▶' : '◀'}
+                            </button>
                         </div>
 
                         <div className="designer-canvas-container">
@@ -970,6 +1739,13 @@ export default function TemplateDesigner() {
                                     onDistributeVertical={handleDistributeVertical}
                                     onBringForward={handleBringForward}
                                     onSendBackward={handleSendBackward}
+                                    onMatchWidth={handleMatchWidth}
+                                    onMatchHeight={handleMatchHeight}
+                                    onMatchSize={handleMatchSize}
+                                    onCenterOnCanvas={handleCenterOnCanvas}
+                                    onAlignToGrid={handleAlignToGrid}
+                                    canvasWidth={resolution.width}
+                                    canvasHeight={resolution.height}
                                 />
 
                                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -1029,7 +1805,241 @@ export default function TemplateDesigner() {
                             onClose={() => setSelectedZoneIds([])}
                             onDelete={handleDeleteZone}
                         />
+                        {selectedZone && selectedZone.contentType === 'widget' && (
+                            <WidgetConfigPanel
+                                zone={selectedZone}
+                                templateId={selectedTemplate?.id}
+                                onConfigChange={(config) => {
+                                    handleZonesChange(zones.map(z =>
+                                        z.id === selectedZone.id
+                                            ? { ...z, widgetConfig: config }
+                                            : z
+                                    ));
+                                }}
+                                allZones={zones}
+                                onDataBindingClick={() => {
+                                    setDataBindingZone(selectedZone);
+                                    setShowDataBindingPanel(true);
+                                }}
+                            />
+                        )}
                     </div>
+                    <TemplateLivePreview
+                        template={{
+                            name: templateName,
+                            width: resolution.width,
+                            height: resolution.height,
+                            background_color: backgroundColor,
+                            background_image_id: backgroundImageId,
+                            zones: zones
+                        }}
+                        zones={zones}
+                        mediaAssets={mediaAssets}
+                        isOpen={showLivePreview}
+                        onClose={() => setShowLivePreview(false)}
+                    />
+                    <TemplateTester
+                        template={{
+                            name: templateName,
+                            width: resolution.width,
+                            height: resolution.height,
+                            background_color: backgroundColor,
+                            background_image_id: backgroundImageId
+                        }}
+                        zones={zones}
+                        mediaAssets={mediaAssets}
+                        isOpen={showTester}
+                        onClose={() => setShowTester(false)}
+                    />
+                    <TemplateAnalytics
+                        template={analyticsTemplate}
+                        isOpen={showAnalytics}
+                        onClose={() => {
+                            setShowAnalytics(false);
+                            setAnalyticsTemplate(null);
+                        }}
+                    />
+                    <QuickActionMenu
+                        template={selectedTemplate}
+                        isOpen={showQuickActions}
+                        onClose={() => setShowQuickActions(false)}
+                    />
+                    <VariableEditor
+                        templateId={selectedTemplate?.id}
+                        variables={templateVariables}
+                        isOpen={showVariableEditor}
+                        onClose={() => setShowVariableEditor(false)}
+                        onSave={(vars) => {
+                            setTemplateVariables(vars);
+                            // Optionally auto-save to template
+                            if (selectedTemplate) {
+                                updateMutation.mutate({
+                                    id: selectedTemplate.id,
+                                    templateData: {
+                                        name: templateName,
+                                        description: templateDescription,
+                                        category: selectedCategory !== 'all' ? selectedCategory : 'custom',
+                                        tags: selectedTags,
+                                        variables: vars,
+                                        width: resolution.width,
+                                        height: resolution.height,
+                                        orientation: resolution.width > resolution.height ? 'landscape' : 'portrait',
+                                        background_color: backgroundColor,
+                                        background_image_id: backgroundImageId || null,
+                                        propertyId: selectedPropertyId || undefined,
+                                        zoneId: selectedZoneId || undefined,
+                                        zones: zones.map(z => ({
+                                            ...z,
+                                            mediaAsset: undefined
+                                        }))
+                                    }
+                                });
+                            }
+                        }}
+                    />
+                    <DataBindingPanel
+                        zone={dataBindingZone}
+                        templateId={selectedTemplate?.id}
+                        isOpen={showDataBindingPanel}
+                        onClose={() => {
+                            setShowDataBindingPanel(false);
+                            setDataBindingZone(null);
+                        }}
+                    />
+                    <TemplateShareModal
+                        template={selectedTemplate}
+                        isOpen={showShareModal}
+                        onClose={() => setShowShareModal(false)}
+                    />
+                    {selectedTemplate && (
+                        <ContentShareModal
+                            isOpen={showPropertyShareModal}
+                            onClose={() => setShowPropertyShareModal(false)}
+                            contentId={selectedTemplate.id}
+                            contentType="template"
+                            currentSharedProperties={selectedTemplate.sharedWithProperties || []}
+                        />
+                    )}
+                    <input
+                        id="import-template-input"
+                        type="file"
+                        accept=".json"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                                handleImportTemplate(file);
+                            }
+                            e.target.value = ''; // Reset input
+                        }}
+                    />
+
+                    {/* Save As Modal */}
+                    {showSaveAs && (
+                        <div className="modal-overlay" onClick={() => setShowSaveAs(false)}>
+                            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                                <h3>Save As New Template</h3>
+                                <div className="form-group">
+                                    <label>Template Name</label>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        value={saveAsName}
+                                        onChange={(e) => setSaveAsName(e.target.value)}
+                                        placeholder="Enter template name"
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Description (Optional)</label>
+                                    <textarea
+                                        className="input"
+                                        value={templateDescription}
+                                        onChange={(e) => setTemplateDescription(e.target.value)}
+                                        placeholder="Enter description"
+                                        rows="3"
+                                    />
+                                </div>
+                                <div className="modal-actions">
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={() => {
+                                            if (saveAsName.trim() && selectedTemplate) {
+                                                saveAsMutation.mutate({
+                                                    templateId: selectedTemplate.id,
+                                                    name: saveAsName.trim(),
+                                                    description: templateDescription
+                                                });
+                                            }
+                                        }}
+                                        disabled={!saveAsName.trim() || saveAsMutation.isLoading}
+                                    >
+                                        {saveAsMutation.isLoading ? 'Saving...' : 'Save'}
+                                    </button>
+                                    <button
+                                        className="btn btn-outline"
+                                        onClick={() => {
+                                            setShowSaveAs(false);
+                                            setSaveAsName('');
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Version History Modal */}
+                    {showVersionHistory && versionHistoryTemplate && (
+                        <div className="modal-overlay" onClick={() => setShowVersionHistory(false)}>
+                            <div className="modal-content version-history-modal" onClick={(e) => e.stopPropagation()}>
+                                <div className="modal-header">
+                                    <h3>Version History: {versionHistoryTemplate.name}</h3>
+                                    <button className="close-btn" onClick={() => setShowVersionHistory(false)}>×</button>
+                                </div>
+                                <div className="version-list">
+                                    {templateVersions?.versions?.length > 0 ? (
+                                        templateVersions.versions.map((version) => (
+                                            <div key={version.id} className="version-item">
+                                                <div className="version-info">
+                                                    <div className="version-header">
+                                                        <span className="version-number">Version {version.version}</span>
+                                                        <span className="version-date">
+                                                            {new Date(version.created_at).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                    {version.created_by_email && (
+                                                        <div className="version-author">By {version.created_by_email}</div>
+                                                    )}
+                                                </div>
+                                                <div className="version-actions">
+                                                    <button
+                                                        className="btn btn-sm btn-outline"
+                                                        onClick={() => {
+                                                            if (confirm('Restore this version? Current changes will be saved as a new version.')) {
+                                                                restoreVersionMutation.mutate({
+                                                                    templateId: versionHistoryTemplate.id,
+                                                                    versionId: version.id
+                                                                });
+                                                            }
+                                                        }}
+                                                        disabled={restoreVersionMutation.isLoading}
+                                                    >
+                                                        <RotateCcw size={14} />
+                                                        Restore
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="empty-state">No version history available</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <DragOverlay>
                         {activeDragId ? (
                             <div style={{ opacity: 0.5 }}>
