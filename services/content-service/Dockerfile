@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:18
 
 # Install dependencies for sharp
 RUN apt-get update && apt-get install -y \
@@ -15,18 +15,22 @@ COPY package*.json ./
 # Remove any existing node_modules to ensure clean install
 RUN rm -rf node_modules package-lock.json || true
 
-# Install dependencies (including optional dependencies for sharp)
-RUN npm install --include=optional
+# Set npm config to install optional dependencies
+RUN npm config set optional true
 
-# Force reinstall sharp for the correct platform
-RUN npm uninstall sharp || true && \
-    npm install --platform=linux --arch=x64 --libc=glibc sharp
+# Install dependencies
+RUN npm install
 
-# Verify sharp installation
-RUN node -e "require('sharp'); console.log('Sharp loaded successfully')" || \
-    (npm rebuild sharp && node -e "require('sharp'); console.log('Sharp rebuilt successfully')")
+# Remove sharp completely and reinstall for correct platform
+RUN npm uninstall sharp || true
 
-# Remove dev dependencies to reduce image size
+# Install sharp with explicit platform (linux glibc)
+RUN npm install sharp --platform=linux --arch=x64
+
+# Verify sharp loads correctly
+RUN node -e "const sharp = require('sharp'); console.log('✅ Sharp version:', sharp.versions); console.log('✅ Sharp loaded successfully')"
+
+# Remove dev dependencies
 RUN npm prune --production
 
 COPY . .
