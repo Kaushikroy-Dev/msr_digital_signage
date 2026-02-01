@@ -20,10 +20,8 @@ win:
     - target: nsis
       arch:
         - x64
-        - ia32
   icon: build/icon.ico
   publisherName: Digital Signage
-  requestedExecutionLevel: requireAdministrator
 
 nsis:
   oneClick: false

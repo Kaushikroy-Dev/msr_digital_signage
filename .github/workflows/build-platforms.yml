@@ -137,7 +137,9 @@ jobs:
       
       - name: Build Electron Windows
         working-directory: frontend
-        run: npm run build:electron:win
+        run: |
+          npm run build
+          npx electron-builder --win --x64
       
       - name: Upload Electron Windows build
         uses: actions/upload-artifact@v4
@@ -163,7 +165,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
+          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 || sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1
       
       - name: Build Electron Linux
         working-directory: frontend
@@ -184,7 +186,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
       
       - name: Setup Java
         uses: actions/setup-java@v4
