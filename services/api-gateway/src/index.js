@@ -356,7 +356,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.API_GATEWAY_PORT || 3000;
+const PORT = process.env.PORT || process.env.API_GATEWAY_PORT || 3000;
 const WS_PORT = process.env.WEBSOCKET_PORT || 3100;
 
 server.listen(PORT, () => {

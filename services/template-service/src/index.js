@@ -1719,7 +1719,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'healthy', service: 'template-service' });
 });
 
-const PORT = process.env.TEMPLATE_SERVICE_PORT || 3003;
+const PORT = process.env.PORT || process.env.TEMPLATE_SERVICE_PORT || 3003;
 app.listen(PORT, () => {
     console.log(`Template Service running on port ${PORT}`);
 });

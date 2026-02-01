@@ -1196,7 +1196,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'healthy', service: 'scheduling-service' });
 });
 
-const PORT = process.env.SCHEDULING_SERVICE_PORT || 3004;
+const PORT = process.env.PORT || process.env.SCHEDULING_SERVICE_PORT || 3004;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Scheduling Service running on port ${PORT}`);
 });

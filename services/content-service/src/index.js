@@ -1055,7 +1055,7 @@ process.on('unhandledRejection', (reason, promise) => {
     // Don't exit - log and continue
 });
 
-const PORT = process.env.CONTENT_SERVICE_PORT || 3002;
+const PORT = process.env.PORT || process.env.CONTENT_SERVICE_PORT || 3002;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Content Service running on port ${PORT}`);
 });

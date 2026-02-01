@@ -875,7 +875,7 @@ app.get('/health', (req, res) => {
 
 // Async startup function
 async function startServer() {
-    const PORT = process.env.DEVICE_SERVICE_PORT || 3005;
+    const PORT = process.env.PORT || process.env.DEVICE_SERVICE_PORT || 3005;
 
     console.log('🚀 Starting Device Service...');
 
