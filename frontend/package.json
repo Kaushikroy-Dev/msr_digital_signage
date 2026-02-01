@@ -48,5 +48,8 @@
         "electron-builder": "^24.9.1",
         "electron-updater": "^6.1.7",
         "vite": "^5.0.11"
+    },
+    "engines": {
+        "node": ">=22"
     }
 }

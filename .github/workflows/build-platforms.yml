@@ -183,21 +183,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
-          check-latest: true
+          node-version: '22'
+          cache: 'npm'
       
       - name: Verify Node.js version
-        run: |
-          echo "Node.js version: $(node --version)"
-          echo "NPM version: $(npm --version)"
-          node_version=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
-          if [ "$node_version" -lt 22 ]; then
-            echo "ERROR: Node.js version must be >= 22.0.0, but got $(node --version)"
-            exit 1
-          fi
+        run: node -v
       
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -212,15 +205,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       
-      - name: Initialize Capacitor Android
+      - name: Add Android platform
         working-directory: frontend
-        run: |
-          if [ ! -d "android" ]; then
-            npm run capacitor:add:android
-          else
-            echo "Android project already exists"
-          fi
-          npm run capacitor:sync
+        run: npm run capacitor:add:android || echo "Android project already exists"
+      
+      - name: Capacitor Sync
+        working-directory: frontend
+        run: npm run capacitor:sync
       
       - name: Build Android APK
         working-directory: frontend
