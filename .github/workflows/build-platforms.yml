@@ -188,6 +188,9 @@ jobs:
         with:
           node-version: '22'
       
+      - name: Verify Node.js version
+        run: node --version && npm --version
+      
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -204,7 +207,11 @@ jobs:
       - name: Initialize Capacitor Android
         working-directory: frontend
         run: |
-          npm run capacitor:add:android || echo "Android project already exists"
+          if [ ! -d "android" ]; then
+            npm run capacitor:add:android
+          else
+            echo "Android project already exists"
+          fi
           npm run capacitor:sync
       
       - name: Build Android APK
