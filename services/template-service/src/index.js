@@ -23,12 +23,13 @@ function authenticateToken(req, res, next) {
     });
 }
 
+// Support both Railway (PG*) and custom (DATABASE_*) environment variables
 const pool = new Pool({
-    host: process.env.DATABASE_HOST || 'localhost',
-    port: process.env.DATABASE_PORT || 5432,
-    database: process.env.DATABASE_NAME || 'digital_signage',
-    user: process.env.DATABASE_USER || 'postgres',
-    password: process.env.DATABASE_PASSWORD || 'postgres',
+    host: process.env.DATABASE_HOST || process.env.PGHOST || 'localhost',
+    port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
+    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
+    user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
+    password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
 });
 
 // Get all templates with filtering, search, and sorting

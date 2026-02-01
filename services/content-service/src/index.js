@@ -51,14 +51,14 @@ app.use((req, res, next) => {
 });
 
 // Database connection
-// IMPORTANT: If running in Docker, use 'postgres' as host, otherwise 'localhost'
-const dbHost = process.env.DATABASE_HOST || (process.env.DOCKER_ENV ? 'postgres' : 'localhost');
+// Support both Railway (PG*) and custom (DATABASE_*) environment variables
+const dbHost = process.env.DATABASE_HOST || process.env.PGHOST || (process.env.DOCKER_ENV ? 'postgres' : 'localhost');
 const pool = new Pool({
     host: dbHost,
-    port: process.env.DATABASE_PORT || 5432,
-    database: process.env.DATABASE_NAME || 'digital_signage',
-    user: process.env.DATABASE_USER || 'postgres',
-    password: process.env.DATABASE_PASSWORD || 'postgres',
+    port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
+    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
+    user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
+    password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
     // Force schema refresh and set search path
     options: '-c search_path=public -c timezone=UTC'
 });
