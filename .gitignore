@@ -1,36 +1,81 @@
+# Dependencies
 node_modules/
-dist/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output
+
+# Production
 build/
+dist/
+*.log
+
+# Environment variables
 .env
 .env.local
-.env.production
-.env.*.local
-.DS_Store
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+.env.development.local
+.env.test.local
+.env.production.local
+.railway.env
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-coverage/
-.nyc_output/
+*~
 
-# Uploaded media files (too large for git)
-services/content-service/uploads/
-services/content-service/storage/
-workers/media-processor/storage/
+# OS
+.DS_Store
+Thumbs.db
+
+# Railway
+.railway/
+railway.json
+
+# Secrets
+.jwt_secret.txt
+*.pem
+*.key
+
+# Storage
+uploads/
+storage/
+*.mp4
+*.mov
+*.avi
 
 # Docker
-docker-compose.override.yml
+.dockerignore
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
 
 # Database
 *.db
 *.sqlite
+*.sqlite3
 
-# Secrets
-*.pem
-*.key
-*.cert
-github_pat_*
+# Build outputs
+*.wgt
+*.ipk
+*.apk
+*.dmg
+*.exe
+
+# Platform specific
+android/
+ios/
+.capacitor/
+.electron-builder/
