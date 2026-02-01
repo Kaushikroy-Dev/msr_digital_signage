@@ -359,7 +359,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || process.env.API_GATEWAY_PORT || 3000;
 const WS_PORT = process.env.WEBSOCKET_PORT || 3100;
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`API Gateway running on port ${PORT}`);
   console.log(`WebSocket server running on port ${PORT}/ws`);
   console.log('Service routes:');

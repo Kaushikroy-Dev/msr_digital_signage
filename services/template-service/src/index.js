@@ -1721,7 +1721,7 @@ app.get('/health', (req, res) => {
 });
 
 const PORT = process.env.PORT || process.env.TEMPLATE_SERVICE_PORT || 3003;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Template Service running on port ${PORT}`);
 });
 
