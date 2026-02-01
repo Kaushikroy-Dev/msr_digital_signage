@@ -9,11 +9,21 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
 
-# Install dependencies and rebuild sharp for the correct platform
-RUN npm install --production && \
-    npm rebuild sharp
+# Remove sharp from node_modules if it exists (to force reinstall)
+RUN rm -rf node_modules/sharp || true
+
+# Install all dependencies first (including dev dependencies for build)
+RUN npm install
+
+# Rebuild sharp for the correct platform (linux glibc x64)
+RUN npm rebuild sharp --platform=linux --arch=x64 --libc=glibc || \
+    npm install --platform=linux --arch=x64 --libc=glibc sharp
+
+# Remove dev dependencies to reduce image size
+RUN npm prune --production
 
 COPY . .
 
