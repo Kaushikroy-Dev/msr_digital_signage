@@ -186,10 +186,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.x'
+          check-latest: true
       
       - name: Verify Node.js version
-        run: node --version && npm --version
+        run: |
+          echo "Node.js version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          node_version=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
+          if [ "$node_version" -lt 22 ]; then
+            echo "ERROR: Node.js version must be >= 22.0.0, but got $(node --version)"
+            exit 1
+          fi
       
       - name: Setup Java
         uses: actions/setup-java@v4
