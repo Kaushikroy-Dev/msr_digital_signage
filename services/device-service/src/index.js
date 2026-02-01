@@ -23,16 +23,36 @@ function authenticateToken(req, res, next) {
 }
 
 // Support both Railway (PG*) and custom (DATABASE_*) environment variables
-const pool = new Pool({
+const dbConfig = {
     host: process.env.DATABASE_HOST || process.env.PGHOST || 'localhost',
-    port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
+    port: parseInt(process.env.DATABASE_PORT || process.env.PGPORT || '5432'),
     database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
     user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
     max: 20, // Maximum number of clients in the pool
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+};
+
+// Log database config (without password) for debugging
+console.log('🔍 Database Config:', {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database,
+    user: dbConfig.user,
+    passwordSet: !!dbConfig.password,
+    passwordLength: dbConfig.password ? dbConfig.password.length : 0,
+    envVars: {
+        hasDATABASE_HOST: !!process.env.DATABASE_HOST,
+        hasPGHOST: !!process.env.PGHOST,
+        hasDATABASE_USER: !!process.env.DATABASE_USER,
+        hasPGUSER: !!process.env.PGUSER,
+        hasDATABASE_PASSWORD: !!process.env.DATABASE_PASSWORD,
+        hasPGPASSWORD: !!process.env.PGPASSWORD,
+    }
 });
+
+const pool = new Pool(dbConfig);
 
 // Test database connection with retry logic
 async function testDatabaseConnection(retries = 5, delay = 2000) {
