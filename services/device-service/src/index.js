@@ -22,49 +22,120 @@ function authenticateToken(req, res, next) {
     });
 }
 
-// Support both Railway (PG*) and custom (DATABASE_*) environment variables
-const dbConfig = {
-    host: process.env.DATABASE_HOST || process.env.PGHOST || 'localhost',
-    port: parseInt(process.env.DATABASE_PORT || process.env.PGPORT || '5432'),
-    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
-    user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
-    password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
-    max: 20, // Maximum number of clients in the pool
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
-};
-
-// Log database config (without password) for debugging
-console.log('🔍 Database Config:', {
-    host: dbConfig.host,
-    port: dbConfig.port,
-    database: dbConfig.database,
-    user: dbConfig.user,
-    passwordSet: !!dbConfig.password,
-    passwordLength: dbConfig.password ? dbConfig.password.length : 0,
-    envVars: {
-        hasDATABASE_HOST: !!process.env.DATABASE_HOST,
-        hasPGHOST: !!process.env.PGHOST,
-        hasDATABASE_USER: !!process.env.DATABASE_USER,
-        hasPGUSER: !!process.env.PGUSER,
-        hasDATABASE_PASSWORD: !!process.env.DATABASE_PASSWORD,
-        hasPGPASSWORD: !!process.env.PGPASSWORD,
+// Comprehensive database configuration - supports all Railway formats
+function getDatabaseConfig() {
+    // Priority 1: DATABASE_URL (Railway sometimes provides this)
+    if (process.env.DATABASE_URL) {
+        console.log('✅ Using DATABASE_URL from environment');
+        return {
+            connectionString: process.env.DATABASE_URL,
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 5000,
+        };
     }
-});
 
+    // Priority 2: Railway's standard PostgreSQL variables (PG*)
+    // Priority 3: Custom variables (DATABASE_*)
+    // Priority 4: Defaults (for local development only)
+    const config = {
+        host: process.env.PGHOST || process.env.DATABASE_HOST || 'localhost',
+        port: parseInt(process.env.PGPORT || process.env.DATABASE_PORT || '5432'),
+        database: process.env.PGDATABASE || process.env.DATABASE_NAME || 'digital_signage',
+        user: process.env.PGUSER || process.env.DATABASE_USER || 'postgres',
+        password: process.env.PGPASSWORD || process.env.DATABASE_PASSWORD || 'postgres',
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+    };
+
+    // Validate we have required credentials (in production, don't use defaults)
+    const isProduction = process.env.NODE_ENV === 'production';
+    const hasCredentials = (
+        (process.env.PGHOST || process.env.DATABASE_HOST) &&
+        (process.env.PGPASSWORD || process.env.DATABASE_PASSWORD)
+    );
+
+    if (isProduction && !hasCredentials && !process.env.DATABASE_URL) {
+        console.error('❌ CRITICAL: Missing database credentials in production!');
+        console.error('📋 Available environment variables:');
+        console.error('   DATABASE_URL:', !!process.env.DATABASE_URL);
+        console.error('   PGHOST:', !!process.env.PGHOST);
+        console.error('   DATABASE_HOST:', !!process.env.DATABASE_HOST);
+        console.error('   PGPASSWORD:', !!process.env.PGPASSWORD);
+        console.error('   DATABASE_PASSWORD:', !!process.env.DATABASE_PASSWORD);
+        console.error('');
+        console.error('🔧 SOLUTION: In Railway dashboard, for device-service:');
+        console.error('   1. Go to Settings → Variables');
+        console.error('   2. Add PostgreSQL service reference:');
+        console.error('      DATABASE_HOST=${{Postgres.PGHOST}}');
+        console.error('      DATABASE_PORT=${{Postgres.PGPORT}}');
+        console.error('      DATABASE_NAME=${{Postgres.PGDATABASE}}');
+        console.error('      DATABASE_USER=${{Postgres.PGUSER}}');
+        console.error('      DATABASE_PASSWORD=${{Postgres.PGPASSWORD}}');
+        console.error('   3. Or Railway should auto-provide PGHOST, PGPORT, etc.');
+        throw new Error('Missing database credentials in production environment');
+    }
+
+    // Log database config (without password) for debugging
+    console.log('🔍 Database Config:', {
+        host: config.host,
+        port: config.port,
+        database: config.database,
+        user: config.user,
+        passwordSet: !!config.password && config.password !== 'postgres',
+        passwordLength: config.password ? config.password.length : 0,
+        source: process.env.DATABASE_URL ? 'DATABASE_URL' :
+                process.env.PGHOST ? 'PG* variables' :
+                process.env.DATABASE_HOST ? 'DATABASE_* variables' : 'defaults',
+        envVars: {
+            hasDATABASE_URL: !!process.env.DATABASE_URL,
+            hasPGHOST: !!process.env.PGHOST,
+            hasDATABASE_HOST: !!process.env.DATABASE_HOST,
+            hasPGUSER: !!process.env.PGUSER,
+            hasDATABASE_USER: !!process.env.DATABASE_USER,
+            hasPGPASSWORD: !!process.env.PGPASSWORD,
+            hasDATABASE_PASSWORD: !!process.env.DATABASE_PASSWORD,
+        }
+    });
+
+    return config;
+}
+
+const dbConfig = getDatabaseConfig();
 const pool = new Pool(dbConfig);
 
-// Test database connection with retry logic
+// Test database connection with retry logic and better error handling
 async function testDatabaseConnection(retries = 5, delay = 2000) {
     for (let i = 0; i < retries; i++) {
         try {
             const client = await pool.connect();
-            await client.query('SELECT 1');
+            const result = await client.query('SELECT version(), current_database(), current_user');
             client.release();
+            
             console.log('✅ Database connection successful');
+            console.log('   Database:', result.rows[0].current_database);
+            console.log('   User:', result.rows[0].current_user);
+            console.log('   PostgreSQL:', result.rows[0].version.split(' ')[0] + ' ' + result.rows[0].version.split(' ')[1]);
             return true;
         } catch (error) {
-            console.error(`❌ Database connection attempt ${i + 1}/${retries} failed:`, error.message);
+            const errorMsg = error.message;
+            console.error(`❌ Database connection attempt ${i + 1}/${retries} failed:`, errorMsg);
+            
+            // Provide helpful error messages
+            if (errorMsg.includes('password authentication failed')) {
+                console.error('   💡 This usually means:');
+                console.error('      - Database credentials are incorrect');
+                console.error('      - Environment variables are not set in Railway');
+                console.error('      - PostgreSQL service is not linked to this service');
+                console.error('   🔧 Fix: Set DATABASE_* or PG* variables in Railway dashboard');
+            } else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('getaddrinfo ENOTFOUND')) {
+                console.error('   💡 This usually means:');
+                console.error('      - Database host is incorrect or unreachable');
+                console.error('      - PostgreSQL service is not running');
+                console.error('   🔧 Fix: Verify PostgreSQL service is running and host is correct');
+            }
+            
             if (i < retries - 1) {
                 console.log(`⏳ Retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
@@ -72,6 +143,18 @@ async function testDatabaseConnection(retries = 5, delay = 2000) {
         }
     }
     console.error('❌ Failed to connect to database after all retries');
+    console.error('');
+    console.error('🔧 TROUBLESHOOTING STEPS:');
+    console.error('   1. Go to Railway dashboard → device-service → Settings → Variables');
+    console.error('   2. Verify PostgreSQL service exists and is running');
+    console.error('   3. Add environment variables using service references:');
+    console.error('      DATABASE_HOST=${{Postgres.PGHOST}}');
+    console.error('      DATABASE_PORT=${{Postgres.PGPORT}}');
+    console.error('      DATABASE_NAME=${{Postgres.PGDATABASE}}');
+    console.error('      DATABASE_USER=${{Postgres.PGUSER}}');
+    console.error('      DATABASE_PASSWORD=${{Postgres.PGPASSWORD}}');
+    console.error('   4. Or check if Railway auto-provides PGHOST, PGPORT, etc.');
+    console.error('   5. Redeploy the service after setting variables');
     return false;
 }
 
