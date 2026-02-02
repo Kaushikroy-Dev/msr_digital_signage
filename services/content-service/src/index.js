@@ -57,7 +57,7 @@ const dbHost = process.env.DATABASE_HOST || process.env.PGHOST || (process.env.D
 const pool = new Pool({
     host: dbHost,
     port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
-    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'railway',
+    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
     user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
     // Force schema refresh and set search path
