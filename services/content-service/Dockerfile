@@ -1,22 +1,29 @@
 FROM node:18-bullseye
 
-WORKDIR /app
+# Install build dependencies for sharp (needed if building from source)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    libvips-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-# Configure npm to always install optional dependencies
-# This is critical for sharp's native binary
-RUN npm config set optional true
+WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies - force optional deps even in production
-RUN npm install --include=optional
+# Try to install sharp with binary first, fallback to building from source
+RUN npm install --include=optional || \
+    (echo "Standard install failed, trying with build-from-source..." && \
+     npm install --build-from-source=sharp --include=optional)
 
-# Verify sharp binary exists
-RUN test -f node_modules/sharp/lib/sharp-linux-x64.node || \
-    (echo "Sharp binary missing, attempting rebuild..." && \
-     npm rebuild sharp --include=optional || \
-     npm install sharp@^0.33.1 --save --include=optional)
+# Verify sharp works
+RUN node -e "const sharp = require('sharp'); console.log('✅ Sharp loaded successfully:', sharp.versions);" || \
+    (echo "❌ Sharp verification failed, attempting rebuild from source..." && \
+     npm rebuild sharp --build-from-source && \
+     node -e "const sharp = require('sharp'); console.log('✅ Sharp rebuilt successfully')")
 
 # Copy application code
 COPY . .
