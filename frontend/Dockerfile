@@ -15,8 +15,10 @@ COPY . .
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
-# Build the application
-RUN npm run build
+# Build the application - Explicitly pass the env var to the command
+RUN echo "Building with VITE_API_URL: $VITE_API_URL" && \
+    VITE_API_URL=$VITE_API_URL npm run build
+
 
 
 # Install serve globally to ensure it's available
