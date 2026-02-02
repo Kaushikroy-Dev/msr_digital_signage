@@ -55,7 +55,7 @@ app.use((req, res, next) => {
 // Support both Railway (PG*) and custom (DATABASE_*) environment variables
 const dbHost = process.env.DATABASE_HOST || process.env.PGHOST || (process.env.DOCKER_ENV ? 'postgres' : 'localhost');
 // Prioritize DATABASE_NAME over PGDATABASE (Railway sets PGDATABASE to 'railway' by default)
-const dbName = process.env.DATABASE_NAME || 'digital_signage';
+const dbName = process.env.DATABASE_NAME || process.env.PGDATABASE || 'railway';
 const pool = new Pool({
     host: dbHost,
     port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
