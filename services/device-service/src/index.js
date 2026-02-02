@@ -1,8 +1,15 @@
 const express = require('express');
+const cors = require('cors');
 const { Pool } = require('pg');
 require('dotenv').config();
 
 const app = express();
+// CORS configuration
+const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
+app.use(cors({
+    origin: corsOrigins,
+    credentials: true
+}));
 const jwt = require('jsonwebtoken');
 app.use(express.json());
 
