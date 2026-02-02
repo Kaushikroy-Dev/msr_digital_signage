@@ -159,22 +159,21 @@ const contentProxyOptions = {
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
 
-    // CRITICAL: Forward Authorization header for authentication
-    if (req.headers['authorization']) {
-      proxyReq.setHeader('Authorization', req.headers['authorization']);
-      console.log('[Gateway] Forwarding Authorization header to content-service');
-    } else {
-      console.log('[Gateway] WARNING: No Authorization header in request to content-service');
-      console.log('[Gateway] Request headers:', Object.keys(req.headers));
-    }
+    // CRITICAL: Forward ALL headers including Authorization for authentication
+    // Copy all headers from original request to proxy request
+    Object.keys(req.headers).forEach(key => {
+      const value = req.headers[key];
+      if (value && typeof value === 'string') {
+        proxyReq.setHeader(key, value);
+      } else if (Array.isArray(value)) {
+        proxyReq.setHeader(key, value.join(', '));
+      }
+    });
 
     // For multipart/form-data, don't write anything - let proxy pipe the stream
     if (contentType.includes('multipart/form-data')) {
       console.log('[Gateway] Multipart upload - preserving headers, streaming body');
-      // Preserve Content-Type with boundary - critical for multer
-      if (req.headers['content-type']) {
-        proxyReq.setHeader('Content-Type', req.headers['content-type']);
-      }
+      console.log('[Gateway] Authorization header present:', !!req.headers['authorization']);
       // Don't write body - the proxy will pipe req to proxyReq automatically
       // Just return and let the proxy handle streaming
       return;
