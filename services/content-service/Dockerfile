@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies including optional (sharp needs this)
-RUN npm install --include=optional
+# Install dependencies - postinstall script will ensure sharp binary is downloaded
+RUN npm install
 
 # Copy application code
 COPY . .
