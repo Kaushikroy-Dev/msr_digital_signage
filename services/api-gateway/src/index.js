@@ -14,14 +14,13 @@ const server = http.createServer(app);
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-// CORS configuration - use single origin to avoid duplicate headers
-// The .env might have comma-separated values, but we'll use just the first one for API Gateway
-// Content service handles its own CORS for direct connections
-const corsOrigin = process.env.CORS_ORIGIN?.split(',')[0] || 'http://localhost:5173';
+// CORS configuration
+const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
 app.use(cors({
-  origin: corsOrigin, // Single origin - no array to avoid duplicate headers
+  origin: corsOrigins,
   credentials: true
 }));
+
 
 // Body parsing - MUST skip for multipart/form-data to allow file uploads
 // Create parsers but apply conditionally
