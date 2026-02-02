@@ -1,11 +1,19 @@
 const express = require('express');
 const { Pool } = require('pg');
+const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
 const app = express();
 const jwt = require('jsonwebtoken');
 app.use(express.json());
+
+// CORS configuration
+const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
+app.use(cors({
+    origin: corsOrigins,
+    credentials: true
+}));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -27,7 +35,7 @@ function authenticateToken(req, res, next) {
 const pool = new Pool({
     host: process.env.DATABASE_HOST || process.env.PGHOST || 'localhost',
     port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
-    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
+    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'railway',
     user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
 });
