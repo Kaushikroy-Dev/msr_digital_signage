@@ -86,6 +86,11 @@ const proxyOptions = {
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
 
+    // CRITICAL: Forward Authorization header for all requests
+    if (req.headers['authorization']) {
+      proxyReq.setHeader('Authorization', req.headers['authorization']);
+    }
+
     // For multipart/form-data, don't touch anything - let it stream naturally
     if (contentType.includes('multipart/form-data')) {
       console.log('[Gateway] Multipart request detected, streaming through untouched');
@@ -153,6 +158,12 @@ const contentProxyOptions = {
   pathRewrite: { '^/api/content': '' },
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
+
+    // CRITICAL: Forward Authorization header for authentication
+    if (req.headers['authorization']) {
+      proxyReq.setHeader('Authorization', req.headers['authorization']);
+      console.log('[Gateway] Forwarding Authorization header to content-service');
+    }
 
     // For multipart/form-data, don't write anything - let proxy pipe the stream
     if (contentType.includes('multipart/form-data')) {
