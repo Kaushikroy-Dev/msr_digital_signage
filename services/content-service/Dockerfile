@@ -1,22 +1,26 @@
-FROM node:18-alpine
+FROM node:18-bullseye-slim
+
+# Install system dependencies for sharp and image processing
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install build dependencies for sharp if needed (though 0.33+ usually brings prebuilts)
-RUN apk add --no-cache libc6-compat
-
-# Copy only package files first
+# Copy package files
 COPY package*.json ./
 
-# Install dependencies
-# We explicitly install the musl version of sharp to avoid the runtime error
-RUN npm install && \
-    npm install @img/sharp-linux-x64 @img/sharp-linuxmusl-x64
+# Install dependencies - let npm handle the correct sharp binary for this OS
+RUN npm install --production
 
-# Copy rest of the app
+# Copy application code
 COPY . .
 
+# Expose content service port
 EXPOSE 3002
 
-CMD ["npm", "start"]
-
+# Use shell form for port variable expansion
+CMD node src/index.js
