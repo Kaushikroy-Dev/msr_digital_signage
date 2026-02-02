@@ -77,6 +77,10 @@ const services = {
 const proxyOptions = {
   changeOrigin: true,
   logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+  // Ensure headers are forwarded (http-proxy-middleware does this by default, but be explicit)
+  headers: {
+    'Connection': 'keep-alive'
+  },
   onError: (err, req, res) => {
     console.error('Proxy error:', err);
     if (!res.headersSent) {
@@ -159,21 +163,22 @@ const contentProxyOptions = {
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
 
-    // CRITICAL: Forward ALL headers including Authorization for authentication
-    // Copy all headers from original request to proxy request
-    Object.keys(req.headers).forEach(key => {
-      const value = req.headers[key];
-      if (value && typeof value === 'string') {
-        proxyReq.setHeader(key, value);
-      } else if (Array.isArray(value)) {
-        proxyReq.setHeader(key, value.join(', '));
-      }
-    });
+    // CRITICAL: Forward Authorization header FIRST (before any other processing)
+    if (req.headers['authorization']) {
+      proxyReq.setHeader('Authorization', req.headers['authorization']);
+      console.log('[Gateway] ✅ Authorization header forwarded to content-service');
+    } else {
+      console.log('[Gateway] ⚠️  WARNING: No Authorization header in request!');
+      console.log('[Gateway] Available headers:', Object.keys(req.headers).join(', '));
+    }
 
-    // For multipart/form-data, don't write anything - let proxy pipe the stream
+    // For multipart/form-data, preserve Content-Type and let proxy handle the rest
     if (contentType.includes('multipart/form-data')) {
       console.log('[Gateway] Multipart upload - preserving headers, streaming body');
-      console.log('[Gateway] Authorization header present:', !!req.headers['authorization']);
+      // Preserve Content-Type with boundary - critical for multer
+      if (req.headers['content-type']) {
+        proxyReq.setHeader('Content-Type', req.headers['content-type']);
+      }
       // Don't write body - the proxy will pipe req to proxyReq automatically
       // Just return and let the proxy handle streaming
       return;
