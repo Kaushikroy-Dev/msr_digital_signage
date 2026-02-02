@@ -22,6 +22,17 @@ function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
+    console.log('[Auth] Request received:', {
+        path: req.path,
+        method: req.method,
+        hasAuthHeader: !!authHeader,
+        authHeaderPrefix: authHeader ? authHeader.substring(0, 20) + '...' : 'none',
+        hasToken: !!token,
+        tokenPrefix: token ? token.substring(0, 20) + '...' : 'none',
+        jwtSecretLength: JWT_SECRET ? JWT_SECRET.length : 0,
+        jwtSecretPrefix: JWT_SECRET ? JWT_SECRET.substring(0, 10) + '...' : 'undefined'
+    });
+
     if (!token) {
         console.log('[Auth] No token provided');
         return res.status(401).json({ error: 'Unauthorized' });
@@ -29,10 +40,19 @@ function authenticateToken(req, res, next) {
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) {
-            console.log('[Auth] Token verification failed:', err.message);
-            console.log('[Auth] JWT_SECRET length:', JWT_SECRET ? JWT_SECRET.length : 'undefined');
+            console.log('[Auth] Token verification failed:', {
+                error: err.message,
+                errorName: err.name,
+                jwtSecretLength: JWT_SECRET ? JWT_SECRET.length : 0,
+                tokenDecoded: jwt.decode(token, { complete: true })
+            });
             return res.status(403).json({ error: 'Forbidden' });
         }
+        console.log('[Auth] Token verified successfully:', {
+            userId: user.userId,
+            role: user.role,
+            tenantId: user.tenantId
+        });
         req.user = user;
         next();
     });
