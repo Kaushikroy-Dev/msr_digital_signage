@@ -31,15 +31,16 @@ function authenticateToken(req, res, next) {
     });
 }
 
-// CORS middleware - allow requests from frontend
-// IMPORTANT: Only set CORS once - the cors() middleware handles everything
+// CORS configuration
+const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
 app.use(cors({
-    origin: 'http://localhost:5173', // Single origin to avoid duplicate headers
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     exposedHeaders: ['Content-Type']
 }));
+
 
 // Body parsing - but skip for multipart/form-data (multer handles it)
 app.use((req, res, next) => {
@@ -56,7 +57,7 @@ const dbHost = process.env.DATABASE_HOST || process.env.PGHOST || (process.env.D
 const pool = new Pool({
     host: dbHost,
     port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
-    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
+    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'railway',
     user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
     // Force schema refresh and set search path
