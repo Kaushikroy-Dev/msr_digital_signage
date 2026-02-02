@@ -41,7 +41,7 @@ function getDatabaseConfig() {
     const config = {
         host: process.env.PGHOST || process.env.DATABASE_HOST || 'localhost',
         port: parseInt(process.env.PGPORT || process.env.DATABASE_PORT || '5432'),
-        database: process.env.PGDATABASE || process.env.DATABASE_NAME || 'digital_signage',
+        database: process.env.PGDATABASE || process.env.DATABASE_NAME || 'railway',
         user: process.env.PGUSER || process.env.DATABASE_USER || 'postgres',
         password: process.env.PGPASSWORD || process.env.DATABASE_PASSWORD || 'postgres',
         max: 20,

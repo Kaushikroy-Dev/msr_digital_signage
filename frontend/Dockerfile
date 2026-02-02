@@ -11,21 +11,9 @@ RUN npm install
 # Copy rest of the app
 COPY . .
 
-# Pass build-time environment variables
-ARG VITE_API_URL
-ENV VITE_API_URL=$VITE_API_URL
-
-# Build the application - Explicitly pass the env var to the command
-RUN echo "Building with VITE_API_URL: $VITE_API_URL" && \
-    VITE_API_URL=$VITE_API_URL npm run build
-
-
-
-# Install serve globally to ensure it's available
-RUN npm install -g serve
-
-# Expose port (not strictly required by Railway but good practice)
+# Expose port
 EXPOSE 3000
 
-# Use shell form to ensure $PORT expansion
-CMD serve -s dist -l $PORT
+# RUNTIME BUILD: Force build and serve at the same time to capture Railway Variables
+CMD npm run build && serve -s dist -l $PORT
+
