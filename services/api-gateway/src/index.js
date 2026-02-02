@@ -163,6 +163,9 @@ const contentProxyOptions = {
     if (req.headers['authorization']) {
       proxyReq.setHeader('Authorization', req.headers['authorization']);
       console.log('[Gateway] Forwarding Authorization header to content-service');
+    } else {
+      console.log('[Gateway] WARNING: No Authorization header in request to content-service');
+      console.log('[Gateway] Request headers:', Object.keys(req.headers));
     }
 
     // For multipart/form-data, don't write anything - let proxy pipe the stream
