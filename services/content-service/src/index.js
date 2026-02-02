@@ -54,10 +54,12 @@ app.use((req, res, next) => {
 // Database connection
 // Support both Railway (PG*) and custom (DATABASE_*) environment variables
 const dbHost = process.env.DATABASE_HOST || process.env.PGHOST || (process.env.DOCKER_ENV ? 'postgres' : 'localhost');
+// Prioritize DATABASE_NAME over PGDATABASE (Railway sets PGDATABASE to 'railway' by default)
+const dbName = process.env.DATABASE_NAME || 'digital_signage';
 const pool = new Pool({
     host: dbHost,
     port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
-    database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'digital_signage',
+    database: dbName,
     user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
     // Force schema refresh and set search path
@@ -66,9 +68,9 @@ const pool = new Pool({
 
 console.log('[DB] Connecting to:', {
     host: dbHost,
-    port: process.env.DATABASE_PORT || 5432,
-    database: process.env.DATABASE_NAME || 'digital_signage',
-    user: process.env.DATABASE_USER || 'postgres'
+    port: process.env.DATABASE_PORT || process.env.PGPORT || 5432,
+    database: dbName,
+    user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres'
 });
 
 // Test connection and verify schema on startup
