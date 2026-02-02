@@ -1,7 +1,6 @@
 FROM node:18-bullseye-slim
 
 # Install system dependencies for sharp and image processing
-# libvips-dev is the actual native library sharp binds to
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -11,18 +10,24 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy package files
+# Ensure optional dependencies are NOT skipped during build
+ENV NODE_ENV=production
+ENV npm_config_optional=true
+ENV npm_config_include=optional
+
 COPY package*.json ./
 
-# Install ALL dependencies (including devDependencies) 
-# This ensures that build-time requirements for native modules like Sharp are satisfied.
-RUN npm install
+# Force install including optional dependencies and rebuild sharp to match the container architecture
+RUN npm install --include=optional \
+    && npm rebuild sharp --verbose
 
-# Copy application code
+# Verify sharp can be loaded during the build phase
+RUN node -e "require('sharp') && console.log('sharp library loaded successfully during build')"
+
 COPY . .
 
 # Expose content service port
 EXPOSE 3002
 
-# Standard CMD for a Node.js API
+# Use array form for CMD
 CMD ["node", "src/index.js"]
