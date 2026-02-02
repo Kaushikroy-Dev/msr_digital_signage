@@ -22,10 +22,17 @@ function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    if (!token) {
+        console.log('[Auth] No token provided');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ error: 'Forbidden' });
+        if (err) {
+            console.log('[Auth] Token verification failed:', err.message);
+            console.log('[Auth] JWT_SECRET length:', JWT_SECRET ? JWT_SECRET.length : 'undefined');
+            return res.status(403).json({ error: 'Forbidden' });
+        }
         req.user = user;
         next();
     });
