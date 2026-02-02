@@ -2,7 +2,15 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const sharp = require('sharp');
+// Make sharp optional - service will work without image processing
+let sharp;
+try {
+    sharp = require('sharp');
+    console.log('✅ Sharp loaded successfully');
+} catch (error) {
+    console.warn('⚠️  Sharp not available - image processing features will be disabled:', error.message);
+    sharp = null;
+}
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
@@ -334,15 +342,19 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
 
         // Process images and videos
         if (fileType === 'image') {
-            try {
-                const metadata = await sharp(fileBuffer).metadata();
-                width = metadata.width;
-                height = metadata.height;
+            if (!sharp) {
+                console.warn('[Upload] Sharp not available - skipping image processing');
+                // Continue without thumbnail
+            } else {
+                try {
+                    const metadata = await sharp(fileBuffer).metadata();
+                    width = metadata.width;
+                    height = metadata.height;
 
-                // Generate thumbnail
-                const thumbnailBuffer = await sharp(fileBuffer)
-                    .resize(400, 300, { fit: 'inside' })
-                    .toBuffer();
+                    // Generate thumbnail
+                    const thumbnailBuffer = await sharp(fileBuffer)
+                        .resize(400, 300, { fit: 'inside' })
+                        .toBuffer();
 
                 thumbnailName = `${uuidv4()}_thumb.jpg`;
                 thumbnailPath = `${targetTenantId}/thumbnails/${thumbnailName}`;
@@ -365,9 +377,10 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
                     fs.writeFileSync(localThumbnailPath, thumbnailBuffer);
                     console.log('[Upload] Thumbnail saved locally:', localThumbnailPath);
                 }
-            } catch (imageError) {
-                console.error('[Upload] Image processing error:', imageError);
-                // Continue without thumbnail if image processing fails
+                } catch (imageError) {
+                    console.error('[Upload] Image processing error:', imageError);
+                    // Continue without thumbnail if image processing fails
+                }
             }
         } else if (fileType === 'video') {
             // For videos, we'll generate a thumbnail using ffmpeg if available

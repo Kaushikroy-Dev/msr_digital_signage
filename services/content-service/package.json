@@ -5,8 +5,7 @@
     "main": "src/index.js",
     "scripts": {
         "dev": "nodemon src/index.js",
-        "start": "node src/index.js",
-        "postinstall": "npm rebuild sharp || npm install sharp --force"
+        "start": "node src/index.js"
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.967.0",
