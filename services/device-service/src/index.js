@@ -57,25 +57,18 @@ function getDatabaseConfig() {
     );
 
     if (isProduction && !hasCredentials && !process.env.DATABASE_URL) {
-        console.error('❌ CRITICAL: Missing database credentials in production!');
-        console.error('📋 Available environment variables:');
-        console.error('   DATABASE_URL:', !!process.env.DATABASE_URL);
-        console.error('   PGHOST:', !!process.env.PGHOST);
-        console.error('   DATABASE_HOST:', !!process.env.DATABASE_HOST);
-        console.error('   PGPASSWORD:', !!process.env.PGPASSWORD);
-        console.error('   DATABASE_PASSWORD:', !!process.env.DATABASE_PASSWORD);
-        console.error('');
-        console.error('🔧 SOLUTION: In Railway dashboard, for device-service:');
-        console.error('   1. Go to Settings → Variables');
-        console.error('   2. Add PostgreSQL service reference:');
-        console.error('      DATABASE_HOST=${{Postgres.PGHOST}}');
-        console.error('      DATABASE_PORT=${{Postgres.PGPORT}}');
-        console.error('      DATABASE_NAME=${{Postgres.PGDATABASE}}');
-        console.error('      DATABASE_USER=${{Postgres.PGUSER}}');
-        console.error('      DATABASE_PASSWORD=${{Postgres.PGPASSWORD}}');
-        console.error('   3. Or Railway should auto-provide PGHOST, PGPORT, etc.');
-        throw new Error('Missing database credentials in production environment');
+        console.warn('⚠️ WARNING: Missing database credentials in production!');
+        console.warn('📋 Available environment variables:');
+        console.warn('   DATABASE_URL:', !!process.env.DATABASE_URL);
+        console.warn('   PGHOST:', !!process.env.PGHOST);
+        console.warn('   DATABASE_HOST:', !!process.env.DATABASE_HOST);
+        console.warn('   PGPASSWORD:', !!process.env.PGPASSWORD);
+        console.warn('   DATABASE_PASSWORD:', !!process.env.DATABASE_PASSWORD);
+        console.warn('');
+        console.warn('🔧 FIX REQUIRED: In Railway dashboard, link your database or');
+        console.warn('   manually add PGPASSWORD/DATABASE_PASSWORD to your variables.');
     }
+
 
     // Log database config (without password) for debugging
     console.log('🔍 Database Config:', {
