@@ -49,10 +49,26 @@ api.interceptors.response.use(
     (error) => {
         // Only trigger logout if we got an actual response with 401/403 status
         // AND it's not a preflight (OPTIONS) error
+        // AND it's not a network error (no response received)
         if (error.response) {
             const status = error.response.status;
+            const isPreflight = error.config?.method === 'options';
 
-            if (status === 401 || status === 403) {
+            // Only clear auth on actual 401/403 responses (not network errors)
+            if ((status === 401 || status === 403) && !isPreflight) {
+                // Check if this is a real auth failure or just a network/CORS issue
+                const url = error.config?.url || '';
+                const isLocalhostCall = error.config?.baseURL?.includes('localhost:3000');
+                
+                // Don't logout if it's a localhost call (likely old cached build)
+                if (isLocalhostCall) {
+                    console.warn(`[API] Request to localhost detected. This may be a cached build issue. URL: ${url}`);
+                    console.warn(`[API] Current API Base URL: ${API_BASE_URL}`);
+                    console.warn(`[API] Please clear browser cache or use Incognito mode.`);
+                    // Don't clear auth - this is likely a cache issue
+                    return Promise.reject(error);
+                }
+
                 console.warn(`[API] Auth failure (${status}) on ${error.config?.url}. Clearing session...`);
 
                 // Only clear and redirect if we aren't already on the login page
@@ -62,8 +78,13 @@ api.interceptors.response.use(
                 }
             }
         } else if (error.request) {
-            // The request was made but no response was received
+            // The request was made but no response was received (network error)
             console.error('[API] Network Error or Connection Blocked:', error.message);
+            console.error('[API] Request URL:', error.config?.url);
+            console.error('[API] Base URL:', error.config?.baseURL);
+            
+            // Don't clear auth on network errors - these are likely connectivity issues
+            // or the old cached build calling localhost:3000
         }
 
         return Promise.reject(error);
