@@ -988,8 +988,13 @@ app.get('/analytics/dashboard-stats', authenticateToken, async (req, res) => {
     }
 });
 
+// Health check endpoint - must be available immediately
 app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', service: 'device-service' });
+    res.json({ 
+        status: 'healthy', 
+        service: 'device-service',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // Async startup function
@@ -998,16 +1003,9 @@ async function startServer() {
 
     console.log('🚀 Starting Device Service...');
 
-    // Test database connection before starting server
-    const dbConnected = await testDatabaseConnection();
-
-    if (!dbConnected) {
-        console.error('❌ Cannot start server without database connection');
-        process.exit(1);
-    }
-
-    // Start HTTP server
-    app.listen(PORT, '0.0.0.0', () => {
+    // Start HTTP server FIRST (before database check)
+    // This allows health checks to pass while DB connects
+    const server = app.listen(PORT, '0.0.0.0', () => {
         console.log(`✅ Device Service running on port ${PORT}`);
     }).on('error', (err) => {
         if (err.code === 'EADDRINUSE') {
@@ -1017,6 +1015,20 @@ async function startServer() {
         }
         process.exit(1);
     });
+
+    // Test database connection AFTER server starts
+    // This prevents Railway from killing the container during startup
+    try {
+        const dbConnected = await testDatabaseConnection();
+        if (!dbConnected) {
+            console.error('⚠️  Database connection failed, but server is running');
+            console.error('⚠️  Health check will still respond, but DB operations may fail');
+            // Don't exit - let the service run and retry DB connection
+        }
+    } catch (error) {
+        console.error('⚠️  Database connection error during startup:', error.message);
+        console.error('⚠️  Service will continue running, DB will retry on first request');
+    }
 }
 
 // Start the server

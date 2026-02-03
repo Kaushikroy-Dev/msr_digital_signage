@@ -1242,13 +1242,19 @@ app.delete('/playlists/:id/share/:propertyId', authenticateToken, async (req, re
     }
 });
 
+// Health check endpoint - must be available immediately
 app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', service: 'scheduling-service' });
+    res.json({ 
+        status: 'healthy', 
+        service: 'scheduling-service',
+        timestamp: new Date().toISOString()
+    });
 });
 
 const PORT = process.env.PORT || process.env.SCHEDULING_SERVICE_PORT || 3004;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Scheduling Service running on port ${PORT}`);
+    console.log(`✅ Scheduling Service running on port ${PORT}`);
+    console.log(`✅ Health check available at http://0.0.0.0:${PORT}/health`);
 });
 
 module.exports = app;
