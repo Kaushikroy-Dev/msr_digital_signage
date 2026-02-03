@@ -60,7 +60,7 @@ api.interceptors.response.use(
                 const url = error.config?.url || '';
                 const baseURL = error.config?.baseURL || '';
                 const isLocalhostCall = baseURL.includes('localhost:3000') || baseURL.includes('127.0.0.1:3000');
-                
+
                 // Don't logout if it's a localhost call (likely old cached build)
                 if (isLocalhostCall) {
                     console.warn(`[API] Request to localhost detected. This may be a cached build issue.`);
@@ -80,6 +80,7 @@ api.interceptors.response.use(
                 }
 
                 console.warn(`[API] Auth failure (${status}) on ${error.config?.url}. Clearing session...`);
+                console.warn(`[API] Error Details:`, error.response?.data);
 
                 // Only clear and redirect if we aren't already on the login page
                 if (!window.location.pathname.includes('/login')) {
@@ -95,7 +96,7 @@ api.interceptors.response.use(
             console.error('[API] Network Error or Connection Blocked:', error.message);
             console.error('[API] Request URL:', error.config?.url);
             console.error('[API] Base URL:', error.config?.baseURL);
-            
+
             // Don't clear auth on network errors - these are likely connectivity issues
             // or the old cached build calling localhost:3000
         }

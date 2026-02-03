@@ -30,17 +30,36 @@ function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    console.log('[Auth] Request received:', {
+        path: req.path,
+        method: req.method,
+        hasAuthHeader: !!authHeader,
+        authHeaderPrefix: authHeader ? authHeader.substring(0, 20) + '...' : 'none',
+        hasToken: !!token,
+        jwtSecretLength: JWT_SECRET ? JWT_SECRET.length : 0,
+        jwtSecretPrefix: JWT_SECRET ? JWT_SECRET.substring(0, 5) + '...' : 'undefined'
+    });
+
+    if (!token) {
+        console.warn('[Auth] No token provided in Authorization header');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) {
-            console.error('[Auth] JWT Verification failed:', err.message);
+            console.error('[Auth] JWT Verification failed:', {
+                message: err.message,
+                name: err.name,
+                expiredAt: err.expiredAt,
+                secretUsedLength: JWT_SECRET ? JWT_SECRET.length : 0
+            });
             return res.status(401).json({
                 error: 'Unauthorized',
                 details: err.message,
-                hint: 'Try logging out and in again.'
+                hint: 'Try logging out and in again. This could also be a configuration mismatch between services.'
             });
         }
+        console.log('[Auth] Token verified successfully for user:', user.userId || user.id);
         req.user = user;
         next();
     });
@@ -1244,8 +1263,8 @@ app.delete('/playlists/:id/share/:propertyId', authenticateToken, async (req, re
 
 // Health check endpoint - must be available immediately
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'healthy', 
+    res.json({
+        status: 'healthy',
         service: 'scheduling-service',
         timestamp: new Date().toISOString()
     });

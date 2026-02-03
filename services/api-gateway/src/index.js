@@ -108,78 +108,86 @@ const proxyOptions = {
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
 
-    // CRITICAL: Forward Authorization header for all requests
-    if (req.headers['authorization']) {
-      proxyReq.setHeader('Authorization', req.headers['authorization']);
-    }
-
-    // Forward all headers from the incoming request
+    // Forward all headers from the incoming request EXCEPT host and authorization
+    // We handle authorization explicitly to avoid duplicates and ensure casing
     Object.keys(req.headers).forEach(headerName => {
-      if (headerName.toLowerCase() === 'host') {
-        // Skip host header to allow changeOrigin to work
+      const lowerName = headerName.toLowerCase();
+      if (lowerName === 'host' || lowerName === 'authorization') {
         return;
       }
       proxyReq.setHeader(headerName, req.headers[headerName]);
     });
 
+    // Handle Authorization header explicitly (ensure standard casing)
+    if (req.headers['authorization']) {
+      proxyReq.setHeader('Authorization', req.headers['authorization']);
+    }
+
     // For multipart/form-data, don't touch anything - let it stream naturally
     if (contentType.includes('multipart/form-data')) {
       console.log('[Gateway] Multipart request detected, streaming through untouched');
-      // Don't modify anything - let http-proxy-middleware handle streaming
-      // The request body will be piped automatically
       return;
     }
 
-    // For JSON requests, rewrite the body (only if body was parsed)
-    if (req.body && Object.keys(req.body).length > 0 && typeof req.body === 'object') {
-      const bodyData = JSON.stringify(req.body);
-      proxyReq.setHeader('Content-Type', 'application/json');
-      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-      proxyReq.write(bodyData);
-    } else {
-      // If body wasn't parsed, let http-proxy-middleware handle it
-      // This ensures the raw body stream is forwarded
-    }
+    // For JSON or URL-encoded requests, rewrite the body (only if body was parsed)
+    if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+      let bodyData;
+      if (contentType.includes('application/json')) {
+        bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Type', 'application/json');
+      } else if (contentType.includes('application/x-www-form-urlencoded')) {
+        const bodyParams = new URLSearchParams();
+        Object.entries(req.body).forEach(([key, value]) => bodyParams.append(key, value));
+        bodyData = bodyParams.toString();
+        proxyReq.setHeader('Content-Type', 'application/x-www-form-urlencoded');
+      }
 
-    // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
-    const requestPath = req.url || req.path || '';
-    if (req.method === 'POST' && requestPath.includes('/commands')) {
-      console.log(`[Gateway] Intercepted potential command. Path: ${requestPath}, Method: ${req.method}`);
-      console.log(`[Gateway] Body:`, JSON.stringify(req.body));
-
-      // Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
-      // Also handle /devices/devices/:id/commands (legacy path)
-      const match = requestPath.match(/\/(?:api\/)?devices(?:\/devices)?\/([^/]+)\/commands/);
-      const deviceId = match ? match[1] : null;
-      const { commandType } = req.body || {};
-
-      console.log(`[Gateway] Match Result: ${match ? 'Match found' : 'No match'}`);
-      console.log(`[Gateway] Extracted DeviceID: ${deviceId}, CommandType: ${commandType}`);
-      console.log(`[Gateway] Connected devices:`, Array.from(clients.keys()));
-
-      if (deviceId && commandType) {
-        // Use setTimeout to ensure the command is sent after the response
-        setTimeout(() => {
-          const sent = sendToDevice(deviceId, {
-            type: 'command',
-            command: commandType,
-            timestamp: Date.now()
-          });
-          console.log(`[Gateway] Broadcast status for ${deviceId}: ${sent ? 'SUCCESS' : 'FAILED (Device not connected via WS)'}`);
-          if (!sent) {
-            console.log(`[Gateway] Device ${deviceId} is not connected. Available devices:`, Array.from(clients.keys()));
-          }
-        }, 100);
-      } else {
-        console.log(`[Gateway] Skipping broadcast: Missing deviceId (${deviceId}) or commandType (${commandType})`);
+      if (bodyData) {
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
       }
     }
   },
-  onProxyRes: (proxyRes, req, res) => {
-    // Ensure CORS headers are present in response even if service doesn't send them
-    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
+  const requestPath = req.url || req.path || '';
+  if(req.method === 'POST' && requestPath.includes('/commands')) {
+    console.log(`[Gateway] Intercepted potential command. Path: ${requestPath}, Method: ${req.method}`);
+console.log(`[Gateway] Body:`, JSON.stringify(req.body));
+
+// Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
+// Also handle /devices/devices/:id/commands (legacy path)
+const match = requestPath.match(/\/(?:api\/)?devices(?:\/devices)?\/([^/]+)\/commands/);
+const deviceId = match ? match[1] : null;
+const { commandType } = req.body || {};
+
+console.log(`[Gateway] Match Result: ${match ? 'Match found' : 'No match'}`);
+console.log(`[Gateway] Extracted DeviceID: ${deviceId}, CommandType: ${commandType}`);
+console.log(`[Gateway] Connected devices:`, Array.from(clients.keys()));
+
+if (deviceId && commandType) {
+  // Use setTimeout to ensure the command is sent after the response
+  setTimeout(() => {
+    const sent = sendToDevice(deviceId, {
+      type: 'command',
+      command: commandType,
+      timestamp: Date.now()
+    });
+    console.log(`[Gateway] Broadcast status for ${deviceId}: ${sent ? 'SUCCESS' : 'FAILED (Device not connected via WS)'}`);
+    if (!sent) {
+      console.log(`[Gateway] Device ${deviceId} is not connected. Available devices:`, Array.from(clients.keys()));
+    }
+  }, 100);
+} else {
+  console.log(`[Gateway] Skipping broadcast: Missing deviceId (${deviceId}) or commandType (${commandType})`);
+}
+    }
   },
+onProxyRes: (proxyRes, req, res) => {
+  // Ensure CORS headers are present in response even if service doesn't send them
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+},
   timeout: 30000 // 30 second timeout
 };
 
