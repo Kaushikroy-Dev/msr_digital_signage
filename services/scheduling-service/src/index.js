@@ -187,6 +187,17 @@ app.post('/playlists', authenticateToken, async (req, res) => {
         const { name, description, transitionEffect, transitionDuration, propertyId, zoneId } = req.body;
         const { tenantId, userId, role } = req.user;
 
+        console.log('[Create Playlist] Request received:', {
+            name,
+            propertyId,
+            zoneId,
+            role,
+            userId,
+            tenantId,
+            hasPropertyId: !!propertyId,
+            hasZoneId: !!zoneId
+        });
+
         // Property/Zone assignment based on role (same logic as media/templates)
         let finalPropertyId = propertyId;
         let finalZoneId = zoneId || null;
@@ -255,6 +266,14 @@ app.post('/playlists', authenticateToken, async (req, res) => {
             }
         }
 
+        console.log('[Create Playlist] Inserting playlist:', {
+            tenantId,
+            userId,
+            finalPropertyId,
+            finalZoneId,
+            name
+        });
+
         const result = await pool.query(
             `INSERT INTO playlists (tenant_id, created_by, property_id, zone_id, name, description, transition_effect, transition_duration_ms, is_shared, shared_with_properties)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -262,10 +281,16 @@ app.post('/playlists', authenticateToken, async (req, res) => {
             [tenantId, userId, finalPropertyId, finalZoneId, name, description, transitionEffect || 'fade', transitionDuration || 1000, false, []]
         );
 
+        console.log('[Create Playlist] Successfully created playlist:', result.rows[0].id);
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error('Create playlist error:', error);
-        res.status(500).json({ error: 'Failed to create playlist' });
+        console.error('[Create Playlist] Error:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            detail: error.detail
+        });
+        res.status(500).json({ error: 'Failed to create playlist', details: error.message });
     }
 });
 
