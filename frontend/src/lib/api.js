@@ -54,27 +54,25 @@ if (hostname.endsWith('.railway.app') || (hostname && !isLocal)) {
 }
 
 // Remove trailing slash if present
-export const API_BASE_URL = selectedBaseUrl.replace(/\/$/, '');
+let finalBaseUrl = selectedBaseUrl.replace(/\/$/, '');
 
 // CRITICAL: Final validation - NEVER allow localhost in production
-if (!isLocal && (API_BASE_URL.includes('localhost') || API_BASE_URL.includes('127.0.0.1'))) {
+if (!isLocal && (finalBaseUrl.includes('localhost') || finalBaseUrl.includes('127.0.0.1'))) {
     console.error('[API-V4] CRITICAL: Detected localhost URL in production! Overriding to production gateway.');
     console.error('[API-V4] This indicates a cached build issue. Please clear browser cache.');
-    selectedBaseUrl = PRODUCTION_GATEWAY;
+    finalBaseUrl = PRODUCTION_GATEWAY.replace(/\/$/, '');
 }
 
-const FINAL_API_BASE_URL = selectedBaseUrl.replace(/\/$/, '');
+export const API_BASE_URL = finalBaseUrl;
 
 console.log('[API-V4] Final Configuration:', {
     hostname,
     isLocal,
-    selectedBaseUrl: FINAL_API_BASE_URL,
+    selectedBaseUrl: API_BASE_URL,
     envViteUrl: import.meta.env.VITE_API_URL,
     isViteUrlLocalhost,
-    warning: !isLocal && FINAL_API_BASE_URL.includes('localhost') ? 'CRITICAL: Using localhost in production!' : null
+    warning: !isLocal && API_BASE_URL.includes('localhost') ? 'CRITICAL: Using localhost in production!' : null
 });
-
-export { FINAL_API_BASE_URL as API_BASE_URL };
 
 // Use the validated API_BASE_URL
 const api = axios.create({
