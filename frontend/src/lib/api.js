@@ -1,24 +1,51 @@
 import axios from 'axios';
 
 // 1. Precise environment detection
-const hostname = window.location.hostname;
-const isLocal = hostname.includes('localhost') ||
-    hostname.includes('127.0.0.1') ||
-    hostname.startsWith('192.168.');
+const getHostname = () => {
+    try {
+        return window.location.hostname || '';
+    } catch (e) {
+        return '';
+    }
+};
+
+const hostname = getHostname();
+const isLocal = hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.endsWith('.local');
 
 // 2. Determine the API Base URL
-// Priority: 
-// - If NOT local, ALWAYS use the production gateway (bypasses baked-in localhost envs)
-// - If local, use VITE_API_URL or fallback to localhost:3000
-const PRODUCTION_GATEWAY = 'https://api-gateway-production-d887.up.railway.app';
-export const API_BASE_URL = !isLocal
-    ? PRODUCTION_GATEWAY
-    : (import.meta.env.VITE_API_URL || 'http://localhost:3000');
+// Priority:
+// 1. Explicit environment variable (VITE_API_URL)
+// 2. Hardcoded production gateway if on a production-like domain
+// 3. Current origin (if gateway is served from same domain)
+// 4. Default to localhost:3000 for local development
+const FALLBACK_PRODUCTION_GATEWAY = 'https://api-gateway-production-d887.up.railway.app';
 
-console.log('[API] Environment Detection:', {
+let selectedBaseUrl = '';
+
+if (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost')) {
+    // Use env var if it's explicitly set to something other than localhost
+    selectedBaseUrl = import.meta.env.VITE_API_URL;
+} else if (!isLocal) {
+    // If we're in production but no env var, use the fallback gateway
+    selectedBaseUrl = FALLBACK_PRODUCTION_GATEWAY;
+} else {
+    // For local dev, prioritize env var or fallback to local port 3000
+    selectedBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+}
+
+// Remove trailing slash if present
+export const API_BASE_URL = selectedBaseUrl.replace(/\/$/, '');
+
+console.log('[API] URL Configuration:', {
     hostname,
     isLocal,
-    selectedBaseUrl: API_BASE_URL
+    selectedBaseUrl: API_BASE_URL,
+    envViteUrl: import.meta.env.VITE_API_URL,
+    mode: import.meta.env.MODE
 });
 
 const api = axios.create({

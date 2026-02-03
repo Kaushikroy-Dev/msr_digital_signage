@@ -59,6 +59,7 @@ export default function Login() {
                             }
                             required
                             autoFocus
+                            autoComplete="email"
                         />
                     </div>
 
@@ -73,6 +74,7 @@ export default function Login() {
                                 setFormData({ ...formData, password: e.target.value })
                             }
                             required
+                            autoComplete="current-password"
                         />
                     </div>
 
