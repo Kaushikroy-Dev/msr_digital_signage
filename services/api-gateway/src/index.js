@@ -218,41 +218,6 @@ const proxyOptions = {
       }
     }
   },
-
-  // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
-  const requestPath = req.url || req.path || '';
-  if(req.method === 'POST' && requestPath.includes('/commands')) {
-    console.log(`[Gateway] Intercepted potential command. Path: ${requestPath}, Method: ${req.method}`);
-console.log(`[Gateway] Body:`, JSON.stringify(req.body));
-
-// Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
-// Also handle /devices/devices/:id/commands (legacy path)
-const match = requestPath.match(/\/(?:api\/)?devices(?:\/devices)?\/([^/]+)\/commands/);
-const deviceId = match ? match[1] : null;
-const { commandType } = req.body || {};
-
-console.log(`[Gateway] Match Result: ${match ? 'Match found' : 'No match'}`);
-console.log(`[Gateway] Extracted DeviceID: ${deviceId}, CommandType: ${commandType}`);
-console.log(`[Gateway] Connected devices:`, Array.from(clients.keys()));
-
-if (deviceId && commandType) {
-  // Use setTimeout to ensure the command is sent after the response
-  setTimeout(() => {
-    const sent = sendToDevice(deviceId, {
-      type: 'command',
-      command: commandType,
-      timestamp: Date.now()
-    });
-    console.log(`[Gateway] Broadcast status for ${deviceId}: ${sent ? 'SUCCESS' : 'FAILED (Device not connected via WS)'}`);
-    if (!sent) {
-      console.log(`[Gateway] Device ${deviceId} is not connected. Available devices:`, Array.from(clients.keys()));
-    }
-  }, 100);
-} else {
-  console.log(`[Gateway] Skipping broadcast: Missing deviceId (${deviceId}) or commandType (${commandType})`);
-}
-    }
-  },
 onProxyRes: (proxyRes, req, res) => {
   // Ensure CORS headers are present in response even if service doesn't send them
   const origin = req.headers.origin;
@@ -262,6 +227,40 @@ onProxyRes: (proxyRes, req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
+
+  // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
+  const requestPath = req.url || req.path || '';
+  if (req.method === 'POST' && requestPath.includes('/commands')) {
+    console.log(`[Gateway] Intercepted potential command. Path: ${requestPath}, Method: ${req.method}`);
+    console.log(`[Gateway] Body:`, JSON.stringify(req.body));
+
+    // Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
+    // Also handle /devices/devices/:id/commands (legacy path)
+    const match = requestPath.match(/\/(?:api\/)?devices(?:\/devices)?\/([^/]+)\/commands/);
+    const deviceId = match ? match[1] : null;
+    const { commandType } = req.body || {};
+
+    console.log(`[Gateway] Match Result: ${match ? 'Match found' : 'No match'}`);
+    console.log(`[Gateway] Extracted DeviceID: ${deviceId}, CommandType: ${commandType}`);
+    console.log(`[Gateway] Connected devices:`, Array.from(clients.keys()));
+
+    if (deviceId && commandType) {
+      // Use setTimeout to ensure the command is sent after the response
+      setTimeout(() => {
+        const sent = sendToDevice(deviceId, {
+          type: 'command',
+          command: commandType,
+          timestamp: Date.now()
+        });
+        console.log(`[Gateway] Broadcast status for ${deviceId}: ${sent ? 'SUCCESS' : 'FAILED (Device not connected via WS)'}`);
+        if (!sent) {
+          console.log(`[Gateway] Device ${deviceId} is not connected. Available devices:`, Array.from(clients.keys()));
+        }
+      }, 100);
+    } else {
+      console.log(`[Gateway] Skipping broadcast: Missing deviceId (${deviceId}) or commandType (${commandType})`);
+    }
   }
 },
   timeout: 30000 // 30 second timeout
