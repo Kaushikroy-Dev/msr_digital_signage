@@ -10,11 +10,7 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-// Security middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-// CORS configuration
+// CORS configuration - MUST be FIRST to handle preflight correctly
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : ['http://localhost:5173', 'http://localhost:3001', 'http://localhost:4173', 'http://localhost:3000'];
