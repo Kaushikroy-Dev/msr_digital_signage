@@ -17,35 +17,28 @@ const isLocal = hostname === 'localhost' ||
     hostname.endsWith('.local');
 
 // 2. Determine the API Base URL
-// Priority:
-// 1. Explicit environment variable (VITE_API_URL)
-// 2. Hardcoded production gateway if on a production-like domain
-// 3. Current origin (if gateway is served from same domain)
-// 4. Default to localhost:3000 for local development
-const FALLBACK_PRODUCTION_GATEWAY = 'https://api-gateway-production-d887.up.railway.app';
-
+const PRODUCTION_GATEWAY = 'https://api-gateway-production-d887.up.railway.app';
 let selectedBaseUrl = '';
 
-if (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('localhost')) {
-    // Use env var if it's explicitly set to something other than localhost
-    selectedBaseUrl = import.meta.env.VITE_API_URL;
-} else if (!isLocal) {
-    // If we're in production but no env var, use the fallback gateway
-    selectedBaseUrl = FALLBACK_PRODUCTION_GATEWAY;
+// CRITICAL: If we are on a production Railway domain, FORCE the production gateway
+// This prevents issues where VITE_API_URL might be baked in as localhost:3000
+if (hostname.endsWith('.railway.app') || (hostname && !isLocal)) {
+    console.log('[API-V3] Production environment detected. Forcing production gateway.');
+    selectedBaseUrl = PRODUCTION_GATEWAY;
 } else {
-    // For local dev, prioritize env var or fallback to local port 3000
+    // Local dev logic
     selectedBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    console.log('[API-V3] Local environment detected.');
 }
 
 // Remove trailing slash if present
 export const API_BASE_URL = selectedBaseUrl.replace(/\/$/, '');
 
-console.log('[API] URL Configuration:', {
+console.log('[API-V3] Final Configuration:', {
     hostname,
     isLocal,
     selectedBaseUrl: API_BASE_URL,
-    envViteUrl: import.meta.env.VITE_API_URL,
-    mode: import.meta.env.MODE
+    envViteUrl: import.meta.env.VITE_API_URL
 });
 
 const api = axios.create({
