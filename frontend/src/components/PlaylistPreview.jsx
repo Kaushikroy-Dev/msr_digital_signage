@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Play, Pause, RotateCcw, SkipForward, SkipBack, Layout, Video } from 'lucide-react';
-import api from '../lib/api';
+import api, { API_BASE_URL } from '../lib/api';
 import MediaPlayer from './MediaPlayer';
 import TemplateRenderer from './TemplateRenderer';
 import './PlaylistPreview.css';
@@ -171,11 +171,11 @@ export default function PlaylistPreview({ playlistId, onClose }) {
                                                     template={currentTemplate}
                                                     duration={(currentItem.duration_ms || (currentItem.duration_seconds * 1000) || 10000) / 1000}
                                                     onComplete={isPlaying ? handleMediaComplete : null}
-                                                    apiUrl={import.meta.env.VITE_API_URL || 'http://localhost:3000'}
+                                                    apiUrl={API_BASE_URL}
                                                 />
                                             ) : currentItem.file_type === 'video' ? (
                                                 <video
-                                                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${currentItem.url}`}
+                                                    src={`${API_BASE_URL}${currentItem.url}`}
                                                     autoPlay={isPlaying}
                                                     loop={!isPlaying}
                                                     muted
@@ -184,7 +184,7 @@ export default function PlaylistPreview({ playlistId, onClose }) {
                                                 />
                                             ) : (
                                                 <img
-                                                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${currentItem.url || currentItem.thumbnail_url}`}
+                                                    src={`${API_BASE_URL}${currentItem.url || currentItem.thumbnail_url}`}
                                                     alt={currentItem.content_name}
                                                     style={{ width: renderWidth, height: renderHeight, objectFit: 'contain' }}
                                                 />
@@ -250,7 +250,7 @@ export default function PlaylistPreview({ playlistId, onClose }) {
                                             <Video size={20} />
                                         ) : (
                                             <img
-                                                src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${item.thumbnail_url || item.url}`}
+                                                src={`${API_BASE_URL}${item.thumbnail_url || item.url}`}
                                                 alt=""
                                             />
                                         )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL } from '../lib/api';
 import './MediaPlayer.css';
 
 export default function MediaPlayer({
@@ -81,7 +82,7 @@ export default function MediaPlayer({
 
     if (!media) return null;
 
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const apiUrl = API_BASE_URL;
     const mediaUrl = `${apiUrl}${media.url}`;
 
     // Auto-enter fullscreen on mount for TV mode

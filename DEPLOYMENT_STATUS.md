@@ -1,143 +1,142 @@
-# 🚀 Railway Deployment Status
+# 🚀 Deployment Status Report
 
-## ✅ Completed
+**Generated:** $(date)
 
-1. **Configuration Files Created**
-   - ✅ Railway configuration files (`railway.json`) for all services
-   - ✅ Nixpacks build configuration (`nixpacks.toml`) for all services
-   - ✅ Environment variable templates (`.railway.env.template`)
-   - ✅ Deployment documentation (`RAILWAY_DEPLOYMENT.md`, `railway-quick-start.md`)
+## ✅ Code Status
 
-2. **Code Updates**
-   - ✅ All services updated to use `process.env.PORT` (Railway standard)
-   - ✅ Dockerfiles updated for production builds
-   - ✅ Frontend Dockerfile updated to build and serve production files
+- **Latest Commit:** `c9e2526` - Fix: Create Playlist button functionality and modal improvements
+- **Additional Commit:** `0793d00` - docs: Add deployment instructions and Railway checklist
+- **Branch:** `main`
+- **Status:** ✅ Committed locally, ready to push
 
-3. **JWT Secret Generated**
-   - ✅ JWT Secret: `e0145426455c4529060cd5272701e97d5f87fbfe9a45e003410c0fe76fb3506a3b42900c9f85a775a3b85546ff1c5c31924922d27f455e4da80210e4ce4778ac`
-   - ✅ Saved in `.jwt_secret.txt` (not committed to git)
+## ⚠️ GitHub Push - Action Required
 
-4. **Git Repository**
-   - ✅ All changes committed
-   - ✅ Pushed to GitHub: `Kaushikroy-Dev/msr_digital_signage`
+**Status:** Requires authentication
 
-## 📋 Next Steps - Complete Deployment
+### Quick Fix Options:
 
-### Option 1: Using Railway Web UI (Recommended)
+#### Option 1: GitHub Personal Access Token (Easiest)
+```bash
+# Create token at: https://github.com/settings/tokens
+# Select scope: repo (full control)
+# Then push:
+git push https://<YOUR_TOKEN>@github.com/Kaushikroy-Dev/msr_digital_signage.git main
+```
 
-1. **Go to Railway Dashboard**
-   - Visit: https://railway.app
-   - Sign in with GitHub
+#### Option 2: Re-authenticate GitHub CLI
+```bash
+gh auth login -h github.com
+git push origin main
+```
 
-2. **Create New Project**
-   - Click **"New Project"**
-   - Select **"Deploy from GitHub repo"**
-   - Choose: `Kaushikroy-Dev/msr_digital_signage`
-   - Click **"Deploy Now"**
+#### Option 3: Use GitHub Desktop or VS Code
+- Open GitHub Desktop or VS Code
+- Use the GUI to push (handles authentication automatically)
 
-3. **Add PostgreSQL Database**
-   - Click **"+ New"** → **"Database"** → **"Add PostgreSQL"**
-   - Wait for provisioning
-   - Note the connection variables
+## ✅ Railway Status
 
-4. **Deploy Services** (Repeat for each)
-   
-   For each service, click **"+ New"** → **"GitHub Repo"** → Select your repo:
-   
-   | Service | Root Directory | Build Command | Start Command |
-   |---------|---------------|---------------|---------------|
-   | api-gateway | `services/api-gateway` | `npm install` | `npm start` |
-   | auth-service | `services/auth-service` | `npm install` | `npm start` |
-   | content-service | `services/content-service` | `npm install` | `npm start` |
-   | template-service | `services/template-service` | `npm install` | `npm start` |
-   | scheduling-service | `services/scheduling-service` | `npm install` | `npm start` |
-   | device-service | `services/device-service` | `npm install` | `npm start` |
-   | frontend | `frontend` | `npm install && npm run build` | `npm run preview` |
+### Connection Status
+- **Railway CLI:** ✅ Connected
+- **Project:** `bubbly-quietude`
+- **Environment:** `production`
+- **Project ID:** `23694457-f6c3-42f1-ab45-2172f39ded1e`
+- **Dashboard:** https://railway.com/project/23694457-f6c3-42f1-ab45-2172f39ded1e?environmentId=04cc4d91-9f66-462e-a888-c70367296dba
 
-5. **Set Environment Variables**
-   - See `RAILWAY_ENV_SETUP.md` for complete variable list
-   - Use JWT Secret: `e0145426455c4529060cd5272701e97d5f87fbfe9a45e003410c0fe76fb3506a3b42900c9f85a775a3b85546ff1c5c31924922d27f455e4da80210e4ce4778ac`
-   - Use Railway service references: `${{Postgres.PGHOST}}`, `${{service-name.RAILWAY_PUBLIC_DOMAIN}}`
+### Database Configuration ✅
 
-6. **Run Database Migrations**
-   - Get PostgreSQL connection string from Railway
-   - Run: `psql $DATABASE_URL -f database/schema.sql`
-   - Run all migrations from `database/migrations/`
+**content-service** is correctly configured:
+- ✅ `DATABASE_NAME=railway` (Production database)
+- ✅ `DATABASE_HOST=digital-signage-db.railway.internal`
+- ✅ `DATABASE_PORT=5432`
+- ✅ `DATABASE_USER=postgres`
+- ✅ `DATABASE_PASSWORD=***` (Set)
+- ✅ `JWT_SECRET=***` (Set)
+- ✅ `NODE_ENV=production`
 
-7. **Generate Domains**
-   - For each service: Settings → Generate Domain
-   - Update `VITE_API_URL` in frontend to use API Gateway domain
+### Recent Deployments
+- **Last Successful:** Feb 2, 2026 at 22:41:36
+- **Status:** Most recent deployments show as REMOVED (normal Railway behavior)
 
-### Option 2: Using Railway CLI
+### Next Steps After GitHub Push
+
+1. **Railway Auto-Deploy:**
+   - Railway will automatically detect the GitHub push
+   - All services will start deploying
+   - Monitor in Railway dashboard
+
+2. **Verify Services:**
+   - Check each service in Railway dashboard:
+     - `api-gateway`
+     - `auth-service`
+     - `content-service`
+     - `template-service`
+     - `scheduling-service`
+     - `device-service`
+     - `frontend`
+
+3. **Verify Environment Variables:**
+   For each service, ensure:
+   ```env
+   DATABASE_NAME=${{Postgres.PGDATABASE}}  # or use Railway's auto-provided PGDATABASE
+   DATABASE_HOST=${{Postgres.PGHOST}}
+   DATABASE_PORT=${{Postgres.PGPORT}}
+   DATABASE_USER=${{Postgres.PGUSER}}
+   DATABASE_PASSWORD=${{Postgres.PGPASSWORD}}
+   JWT_SECRET=<same-for-all-services>
+   ```
+
+4. **Test Create Playlist:**
+   - After deployment completes
+   - Log in to production
+   - Navigate to Playlists
+   - Test Create Playlist functionality
+
+## 📋 Verification Checklist
+
+- [ ] Code pushed to GitHub
+- [ ] Railway auto-deployment triggered
+- [ ] All services deployed successfully
+- [ ] Database connections verified (check logs)
+- [ ] Environment variables verified for all services
+- [ ] Create Playlist tested in production
+- [ ] No errors in service logs
+
+## 🐛 Troubleshooting
+
+### If GitHub Push Fails:
+- Use Personal Access Token (Option 1 above)
+- Or re-authenticate GitHub CLI: `gh auth login`
+
+### If Railway Deployment Fails:
+- Check Railway dashboard for build errors
+- Verify environment variables are set
+- Check service logs: `npx railway logs`
+
+### If Database Connection Fails:
+- Verify `DATABASE_NAME` or `PGDATABASE` is set to `railway`
+- Check service references: `${{Postgres.PGDATABASE}}`
+- Verify PostgreSQL service exists in Railway
+
+### If Create Playlist Still Not Working:
+- Check browser console for errors
+- Verify JWT_SECRET matches across all services
+- Check scheduling-service logs for validation errors
+
+## 📞 Quick Commands
 
 ```bash
-# Login to Railway (opens browser)
-npx @railway/cli login
+# Check Railway status
+npx railway status
 
-# Create new project
-npx @railway/cli init
+# View Railway logs
+npx railway logs
 
-# Add PostgreSQL
-npx @railway/cli add postgres
+# Open Railway dashboard
+npx railway open
 
-# Deploy services (for each service)
-cd services/api-gateway
-npx @railway/cli up
-# Repeat for other services...
+# Check Railway variables
+npx railway variables
+
+# Push to GitHub (after authentication)
+git push origin main
 ```
-
-## 📚 Documentation Files
-
-- **`railway-quick-start.md`** - Quick deployment guide
-- **`RAILWAY_DEPLOYMENT.md`** - Detailed deployment instructions
-- **`RAILWAY_ENV_SETUP.md`** - Complete environment variable setup
-- **`.railway.env.template`** - Environment variable template
-
-## 🔑 Important Credentials
-
-**JWT Secret** (use for all services):
-```
-e0145426455c4529060cd5272701e97d5f87fbfe9a45e003410c0fe76fb3506a3b42900c9f85a775a3b85546ff1c5c31924922d27f455e4da80210e4ce4778ac
-```
-
-## ✅ Deployment Checklist
-
-- [ ] Railway account created
-- [ ] Project created from GitHub repo
-- [ ] PostgreSQL database added
-- [ ] All 7 services deployed
-- [ ] Environment variables set (see `RAILWAY_ENV_SETUP.md`)
-- [ ] JWT_SECRET added to all services
-- [ ] Database migrations run
-- [ ] Service domains generated
-- [ ] Frontend VITE_API_URL updated
-- [ ] Health check passing: `/health` endpoint
-- [ ] Frontend accessible
-
-## 🆘 Troubleshooting
-
-**Service won't start?**
-- Check logs in Railway dashboard
-- Verify all environment variables are set
-- Ensure database is accessible
-
-**Can't connect to database?**
-- Verify PostgreSQL service is running
-- Check environment variables use Railway references: `${{Postgres.*}}`
-
-**Services can't communicate?**
-- Use Railway service references: `${{service-name.RAILWAY_PUBLIC_DOMAIN}}`
-- Verify all services are deployed
-- Check service URLs in environment variables
-
-## 📞 Support
-
-If you encounter issues:
-1. Check Railway logs for each service
-2. Verify environment variables match `RAILWAY_ENV_SETUP.md`
-3. Ensure database migrations are run
-4. Check service health endpoints
-
----
-
-**Status**: ✅ Ready for deployment - Configuration complete, awaiting Railway setup

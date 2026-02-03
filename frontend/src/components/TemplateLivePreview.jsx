@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { API_BASE_URL } from '../lib/api';
 import { X, Monitor, Tablet, Smartphone, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import TemplateRenderer from './TemplateRenderer';
@@ -77,7 +78,7 @@ export default function TemplateLivePreview({
     // while also considering the device frame aspect ratio if showFrame is true
     const scale = Math.min(maxWidth / renderWidth, maxHeight / renderHeight);
 
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const apiUrl = API_BASE_URL;
 
     // Ensure zones are properly formatted
     const formattedZones = (zones || []).map(zone => ({

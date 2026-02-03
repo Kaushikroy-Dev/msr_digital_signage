@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { X, CheckCircle, XCircle, AlertTriangle, Loader } from 'lucide-react';
 import { validateTemplate } from '../utils/templateValidation';
-import api from '../lib/api';
+import api, { API_BASE_URL } from '../lib/api';
 import './TemplateTester.css';
 
-export default function TemplateTester({ 
-    template, 
-    zones, 
+export default function TemplateTester({
+    template,
+    zones,
     mediaAssets = [],
     isOpen,
-    onClose 
+    onClose
 }) {
     const [testResults, setTestResults] = useState(null);
     const [isTesting, setIsTesting] = useState(false);
@@ -33,7 +33,7 @@ export default function TemplateTester({
 
         // Run validation
         const validation = validateTemplate(template, zones, mediaAssets);
-        
+
         // Test widget configurations
         const widgetTestResults = {};
         zones.forEach(zone => {
@@ -158,9 +158,9 @@ export default function TemplateTester({
 
             // Test if media URL is accessible
             try {
-                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const apiUrl = API_BASE_URL;
                 const mediaUrl = `${apiUrl}${asset.url}`;
-                
+
                 const response = await fetch(mediaUrl, { method: 'HEAD' });
                 if (response.ok) {
                     results.loaded++;
@@ -204,8 +204,8 @@ export default function TemplateTester({
                 <div className="tester-header">
                     <h3>Template Testing Suite</h3>
                     <div className="tester-actions">
-                        <button 
-                            className="btn btn-sm btn-outline" 
+                        <button
+                            className="btn btn-sm btn-outline"
                             onClick={runTests}
                             disabled={isTesting}
                         >

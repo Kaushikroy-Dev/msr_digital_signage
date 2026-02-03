@@ -6,7 +6,7 @@ import { Plus, Save, Layout as LayoutIcon, Grid, Type, Image as ImageIcon, Clock
 import { useDraggable } from '@dnd-kit/core';
 import { snapToGrid, getAlignmentGuides, applySmartSnap } from '../utils/canvasUtils';
 import * as alignmentUtils from '../utils/alignmentUtils';
-import api from '../lib/api';
+import api, { API_BASE_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import TemplateCanvas from '../components/TemplateCanvas';
 import MediaLibraryPanel from '../components/MediaLibraryPanel';
@@ -932,7 +932,7 @@ export default function TemplateDesigner() {
             if (template.background_image_id && assets && assets.length > 0) {
                 const bgImage = assets.find(a => a.id === template.background_image_id);
                 if (bgImage && bgImage.url) {
-                    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                    const apiUrl = API_BASE_URL;
                     setBackgroundImage(`${apiUrl}${bgImage.url}`);
                 } else {
                     setBackgroundImage(null);

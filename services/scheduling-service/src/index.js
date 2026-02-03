@@ -9,9 +9,17 @@ const jwt = require('jsonwebtoken');
 app.use(express.json());
 
 // CORS configuration
-const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
+const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:4173'];
 app.use(cors({
-    origin: corsOrigins,
+    origin: function (origin, callback) {
+        if (!origin || corsOrigins.indexOf(origin) !== -1 || origin.endsWith('.railway.app')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
 
@@ -25,7 +33,14 @@ function authenticateToken(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ error: 'Forbidden' });
+        if (err) {
+            console.error('[Auth] JWT Verification failed:', err.message);
+            return res.status(401).json({
+                error: 'Unauthorized',
+                details: err.message,
+                hint: 'Try logging out and in again.'
+            });
+        }
         req.user = user;
         next();
     });

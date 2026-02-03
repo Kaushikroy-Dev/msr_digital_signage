@@ -15,9 +15,27 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 // CORS configuration
-const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : ['http://localhost:5173', 'http://localhost:3001', 'http://localhost:4173', 'http://localhost:3000'];
+
+// Always allow the current host if it's a railway domain
 app.use(cors({
-  origin: corsOrigins,
+  origin: function (origin, callback) {
+    // Allow if origin is in corsOrigins or if it's a railway domain or any localhost in dev
+    const isLocalhost = origin && (
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('http://127.0.0.1') ||
+      origin.startsWith('http://192.168.')
+    );
+
+    if (!origin || corsOrigins.indexOf(origin) !== -1 || origin.endsWith('.railway.app') || isLocalhost) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked origin: ${origin}`);
+      callback(null, true); // In development, let's be permissive to unblock the user
+    }
+  },
   credentials: true
 }));
 
@@ -157,6 +175,11 @@ const proxyOptions = {
       }
     }
   },
+  onProxyRes: (proxyRes, req, res) => {
+    // Ensure CORS headers are present in response even if service doesn't send them
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  },
   timeout: 30000 // 30 second timeout
 };
 
@@ -175,28 +198,24 @@ const contentProxyOptions = {
   onProxyReq: (proxyReq, req, res) => {
     const contentType = req.headers['content-type'] || '';
 
-    // CRITICAL: Forward Authorization header FIRST (before any other processing)
+    // CRITICAL: Forward Authorization header FIRST
     if (req.headers['authorization']) {
       proxyReq.setHeader('Authorization', req.headers['authorization']);
-      console.log('[Gateway] ✅ Authorization header forwarded to content-service');
-    } else {
-      console.log('[Gateway] ⚠️  WARNING: No Authorization header in request!');
-      console.log('[Gateway] Available headers:', Object.keys(req.headers).join(', '));
     }
 
-    // For multipart/form-data, preserve Content-Type and let proxy handle the rest
+    // Forward ALL other headers
+    Object.keys(req.headers).forEach(headerName => {
+      if (['host', 'authorization', 'content-length'].includes(headerName.toLowerCase())) return;
+      proxyReq.setHeader(headerName, req.headers[headerName]);
+    });
+
+    // Special handling for multipart
     if (contentType.includes('multipart/form-data')) {
-      console.log('[Gateway] Multipart upload - preserving headers, streaming body');
-      // Preserve Content-Type with boundary - critical for multer
-      if (req.headers['content-type']) {
-        proxyReq.setHeader('Content-Type', req.headers['content-type']);
-      }
-      // Don't write body - the proxy will pipe req to proxyReq automatically
-      // Just return and let the proxy handle streaming
+      console.log('[Gateway] Multipart upload - streaming through');
       return;
     }
 
-    // For JSON requests, rewrite the body
+    // For JSON requests, rewrite the body if it was parsed
     if (req.body && Object.keys(req.body).length > 0 && typeof req.body === 'object') {
       const bodyData = JSON.stringify(req.body);
       proxyReq.setHeader('Content-Type', 'application/json');

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Upload, Image as ImageIcon, Video, FileText, Trash2, Search, Share2 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-import api from '../lib/api';
+import api, { API_BASE_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import PropertyZoneSelector from '../components/PropertyZoneSelector';
 import ContentShareModal from '../components/ContentShareModal';
@@ -98,7 +98,7 @@ export default function MediaLibrary() {
                 formData.append('zoneId', selectedZoneId);
             }
             // zone_admin and content_editor will have property/zone auto-assigned by backend
-            
+
             console.log('[Upload] FormData contents:', {
                 hasFile: files[0] ? true : false,
                 fileName: files[0]?.name,
@@ -109,8 +109,7 @@ export default function MediaLibrary() {
             });
 
             // Use API gateway for upload
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-            const uploadUrl = `${API_URL}/api/content/upload`;
+            const uploadUrl = `${API_BASE_URL}/api/content/upload`;
 
             console.log('[Upload] Starting upload:', {
                 url: uploadUrl,
@@ -179,7 +178,7 @@ export default function MediaLibrary() {
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop: (files) => {
             if (!canManageMedia) return;
-            
+
             // Validate property/zone selection before upload
             if (user?.role === 'super_admin' && !selectedPropertyId) {
                 alert('Please select a property before uploading');
@@ -189,7 +188,7 @@ export default function MediaLibrary() {
                 alert('Please select a zone before uploading');
                 return;
             }
-            
+
             uploadMutation.mutate(files);
         },
         disabled: !canManageMedia,
@@ -291,18 +290,18 @@ export default function MediaLibrary() {
                             <div className="media-preview">
                                 {asset.fileType === 'image' ? (
                                     <img
-                                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${asset.thumbnailUrl || asset.url}`}
+                                        src={`${API_BASE_URL}${asset.thumbnailUrl || asset.url}`}
                                         alt={asset.originalName}
                                         onError={(e) => {
                                             // Fallback to original image if thumbnail fails
                                             if (asset.thumbnailUrl && e.target.src !== asset.url) {
-                                                e.target.src = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${asset.url}`;
+                                                e.target.src = `${API_BASE_URL}${asset.url}`;
                                             }
                                         }}
                                     />
                                 ) : asset.fileType === 'video' && asset.thumbnailUrl ? (
                                     <img
-                                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${asset.thumbnailUrl}`}
+                                        src={`${API_BASE_URL}${asset.thumbnailUrl}`}
                                         alt={asset.originalName}
                                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                         onError={(e) => {

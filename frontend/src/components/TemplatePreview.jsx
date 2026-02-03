@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { API_BASE_URL } from '../lib/api';
 import './TemplatePreview.css';
 
 export default function TemplatePreview({ template, zones, onClose }) {
@@ -13,7 +14,7 @@ export default function TemplatePreview({ template, zones, onClose }) {
                         <X size={20} />
                     </button>
                 </div>
-                <div 
+                <div
                     className="template-preview-canvas"
                     style={{
                         width: template.width,
@@ -38,7 +39,7 @@ export default function TemplatePreview({ template, zones, onClose }) {
                         >
                             {zone.contentType === 'media' && zone.mediaAsset && (
                                 <img
-                                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${zone.mediaAsset.url}`}
+                                    src={`${API_BASE_URL}${zone.mediaAsset.url}`}
                                     alt={zone.name}
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 />

@@ -7,9 +7,17 @@ require('dotenv').config();
 
 const app = express();
 // CORS configuration
-const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
+const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:4173'];
 app.use(cors({
-    origin: corsOrigins,
+    origin: function (origin, callback) {
+        if (!origin || corsOrigins.indexOf(origin) !== -1 || origin.endsWith('.railway.app')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
 app.use(express.json());
@@ -24,7 +32,14 @@ function authenticateToken(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ error: 'Forbidden' });
+        if (err) {
+            console.error('[Auth] Template service JWT Verification failed:', err.message);
+            return res.status(401).json({
+                error: 'Unauthorized',
+                details: err.message,
+                hint: 'Try logging out and in again.'
+            });
+        }
         req.user = user;
         next();
     });
@@ -45,7 +60,7 @@ app.get('/templates', authenticateToken, async (req, res) => {
         const { tenantId, category, tags, search, propertyId, zoneId, sortBy = 'created_at', sortOrder = 'DESC' } = req.query;
         const tenant = tenantId || req.user.tenantId;
         const { role, userId } = req.user;
-        
+
         let query = `SELECT * FROM public.templates WHERE tenant_id = $1`;
         const params = [tenant];
         let paramIndex = 2;
@@ -165,7 +180,7 @@ app.get('/templates', authenticateToken, async (req, res) => {
         query += ` ORDER BY ${sortColumn} ${sortDirection}`;
 
         const result = await pool.query(query, params);
-        
+
         // Transform snake_case to camelCase for frontend consistency
         const templates = result.rows.map(template => ({
             ...template,
@@ -174,7 +189,7 @@ app.get('/templates', authenticateToken, async (req, res) => {
             zoneId: template.zone_id,
             isShared: template.is_shared
         }));
-        
+
         res.json({ templates });
     } catch (error) {
         console.error('Get templates error:', error);
@@ -300,18 +315,18 @@ app.post('/templates', authenticateToken, async (req, res) => {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12, $13::jsonb, $14, $15, $16, $17)
              RETURNING *`,
             [
-                tenantId, 
+                tenantId,
                 userId,
                 finalPropertyId,
                 finalZoneId,
-                name, 
-                description || '', 
+                name,
+                description || '',
                 category || 'custom',
                 JSON.stringify(tagsValue), // JSONB accepts JSON string
                 JSON.stringify(variablesValue), // JSONB accepts JSON string
-                width, 
-                height, 
-                orientation || 'landscape', 
+                width,
+                height,
+                orientation || 'landscape',
                 JSON.stringify(zonesValue), // JSONB accepts JSON string
                 background_color || '#ffffff',
                 background_image_id || null,
@@ -329,7 +344,7 @@ app.post('/templates', authenticateToken, async (req, res) => {
             detail: error.detail,
             stack: error.stack
         });
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to create template',
             details: error.message,
             code: error.code
@@ -360,11 +375,11 @@ app.put('/templates/:id', authenticateToken, async (req, res) => {
 
         // Check if preview_image_path is being updated
         const { preview_image_path } = req.body;
-        
+
         // Handle property/zone updates (only for super_admin)
         let finalPropertyId = propertyId;
         let finalZoneId = zoneId || null;
-        
+
         if (role === 'super_admin' && propertyId) {
             // Super admin can update property/zone
             finalPropertyId = propertyId;
@@ -380,7 +395,7 @@ app.put('/templates/:id', authenticateToken, async (req, res) => {
                 finalZoneId = existingTemplate.rows[0].zone_id;
             }
         }
-        
+
         // If only preview_image_path is provided, do a simple update
         if (preview_image_path !== undefined && Object.keys(req.body).length === 1) {
             const result = await pool.query(
@@ -1097,8 +1112,8 @@ app.post('/data-sources/:id/test', authenticateToken, async (req, res) => {
         const source = result.rows[0];
         // TODO: Implement actual data fetching based on source_type
         // For now, return mock data
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             sample: { message: 'Connection test successful', source_type: source.source_type }
         });
     } catch (error) {

@@ -46,7 +46,11 @@ function authenticateToken(req, res, next) {
                 jwtSecretLength: JWT_SECRET ? JWT_SECRET.length : 0,
                 tokenDecoded: jwt.decode(token, { complete: true })
             });
-            return res.status(403).json({ error: 'Forbidden' });
+            return res.status(401).json({
+                error: 'Unauthorized',
+                details: err.message,
+                hint: 'Token is invalid or expired. Try logging out and in again.'
+            });
         }
         console.log('[Auth] Token verified successfully:', {
             userId: user.userId,
@@ -59,9 +63,17 @@ function authenticateToken(req, res, next) {
 }
 
 // CORS configuration
-const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
+const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:4173'];
 app.use(cors({
-    origin: corsOrigins,
+    origin: function (origin, callback) {
+        if (!origin || corsOrigins.indexOf(origin) !== -1 || origin.endsWith('.railway.app')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -138,12 +150,12 @@ pool.query('SELECT current_database(), current_schema()')
 
 // Check if using S3 or local storage
 // Only use S3 if credentials are provided AND are not placeholder values
-const USE_S3 = process.env.AWS_ACCESS_KEY_ID && 
-                process.env.AWS_SECRET_ACCESS_KEY &&
-                process.env.AWS_ACCESS_KEY_ID !== 'your_access_key' &&
-                process.env.AWS_SECRET_ACCESS_KEY !== 'your_secret_key' &&
-                process.env.AWS_ACCESS_KEY_ID.trim() !== '' &&
-                process.env.AWS_SECRET_ACCESS_KEY.trim() !== '';
+const USE_S3 = process.env.AWS_ACCESS_KEY_ID &&
+    process.env.AWS_SECRET_ACCESS_KEY &&
+    process.env.AWS_ACCESS_KEY_ID !== 'your_access_key' &&
+    process.env.AWS_SECRET_ACCESS_KEY !== 'your_secret_key' &&
+    process.env.AWS_ACCESS_KEY_ID.trim() !== '' &&
+    process.env.AWS_SECRET_ACCESS_KEY.trim() !== '';
 // Use /app/storage when running in Docker, otherwise use uploads in current directory
 const UPLOAD_DIR = process.env.UPLOAD_DIR || (fs.existsSync('/app/storage') ? '/app/storage' : path.join(process.cwd(), 'uploads'));
 
@@ -213,7 +225,7 @@ const handleMulterError = (err, req, res, next) => {
 // Upload media asset - RESTRUCTURED FOR RELIABILITY
 app.post('/upload', authenticateToken, upload.single('file'), handleMulterError, async (req, res) => {
     let assetId = null;
-    
+
     try {
         console.log('[Upload] Request received:', {
             hasFile: !!req.file,
@@ -229,17 +241,17 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
             console.error('[Upload] Validation error:', req.fileValidationError);
             return res.status(400).json({ error: req.fileValidationError });
         }
-        
+
         if (!req.file) {
             console.error('[Upload] No file received');
-            return res.status(400).json({ 
-                error: 'No file uploaded', 
+            return res.status(400).json({
+                error: 'No file uploaded',
                 details: 'Please ensure the file field is named "file" and the file is valid.'
             });
         }
 
         const { tenantId, userId, tags, propertyId, zoneId } = req.body;
-        
+
         console.log('[Upload] Extracted form fields:', {
             tenantId,
             userId,
@@ -411,7 +423,7 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
                     fs.mkdirSync(tempVideoDir, { recursive: true });
                 }
                 fs.writeFileSync(tempVideoPath, fileBuffer);
-                
+
                 // Generate thumbnail at 1 second mark
                 thumbnailName = `${uuidv4()}_thumb.jpg`;
                 const tempThumbnailPath = path.join(UPLOAD_DIR, targetTenantId, 'thumbnails', thumbnailName);
@@ -419,16 +431,16 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
                 if (!fs.existsSync(tenantThumbnailDir)) {
                     fs.mkdirSync(tenantThumbnailDir, { recursive: true });
                 }
-                
+
                 try {
                     // Try ffmpeg to extract frame at 1 second mark
                     console.log('[Upload] Generating video thumbnail with ffmpeg...');
                     console.log('[Upload] Temp video path:', tempVideoPath);
                     console.log('[Upload] Temp thumbnail path:', tempThumbnailPath);
-                    
+
                     // Use -y to overwrite, redirect stderr to stdout, and ignore errors in stderr
                     const ffmpegCommand = `ffmpeg -i "${tempVideoPath}" -ss 00:00:01 -vframes 1 -vf "scale=400:300:force_original_aspect_ratio=decrease" -y "${tempThumbnailPath}" 2>&1`;
-                    
+
                     try {
                         const { stdout, stderr } = await execAsync(ffmpegCommand);
                         console.log('[Upload] FFmpeg output:', stdout.substring(0, 200));
@@ -440,24 +452,24 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
                         // If file exists, it's probably fine even if execAsync threw an error
                         console.log('[Upload] FFmpeg completed (may have warnings in stderr)');
                     }
-                    
+
                     // Wait a bit to ensure file is written
                     await new Promise(resolve => setTimeout(resolve, 100));
-                    
+
                     // Check if thumbnail file was created
                     if (!fs.existsSync(tempThumbnailPath)) {
                         throw new Error('Thumbnail file was not created by ffmpeg');
                     }
-                    
+
                     // Read the generated thumbnail
                     const thumbnailBuffer = fs.readFileSync(tempThumbnailPath);
                     if (thumbnailBuffer.length === 0) {
                         throw new Error('Generated thumbnail is empty');
                     }
-                    
+
                     console.log('[Upload] Thumbnail generated, size:', thumbnailBuffer.length, 'bytes');
                     thumbnailPath = `${targetTenantId}/thumbnails/${thumbnailName}`;
-                    
+
                     if (USE_S3) {
                         await s3Client.send(new PutObjectCommand({
                             Bucket: BUCKET_NAME,
@@ -469,9 +481,9 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
                     } else {
                         console.log('[Upload] Video thumbnail saved locally:', tempThumbnailPath);
                     }
-                    
+
                     console.log('[Upload] Video thumbnail generated successfully');
-                    
+
                     // Clean up temp video file
                     if (fs.existsSync(tempVideoPath)) {
                         fs.unlinkSync(tempVideoPath);
@@ -485,10 +497,10 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
                     });
                     // Clean up temp files
                     if (fs.existsSync(tempVideoPath)) {
-                        try { fs.unlinkSync(tempVideoPath); } catch (e) {}
+                        try { fs.unlinkSync(tempVideoPath); } catch (e) { }
                     }
                     if (fs.existsSync(tempThumbnailPath)) {
-                        try { fs.unlinkSync(tempThumbnailPath); } catch (e) {}
+                        try { fs.unlinkSync(tempThumbnailPath); } catch (e) { }
                     }
                 }
             } catch (videoError) {
@@ -547,8 +559,8 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
             ? `${CDN_URL}/${storagePath}`
             : `/uploads/${targetTenantId}/media/${fileName}`;
         const thumbnailUrl = thumbnailPath
-            ? (USE_S3 
-                ? `${CDN_URL}/${thumbnailPath}` 
+            ? (USE_S3
+                ? `${CDN_URL}/${thumbnailPath}`
                 : `/uploads/${targetTenantId}/thumbnails/${thumbnailName}`)
             : null;
 
@@ -576,7 +588,7 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
             stack: error.stack,
             assetId
         });
-        
+
         // If we created an asset but failed later, try to clean up
         if (assetId) {
             try {
@@ -585,9 +597,9 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
                 console.error('[Upload] Cleanup error:', cleanupError);
             }
         }
-        
-        res.status(500).json({ 
-            error: 'Upload failed', 
+
+        res.status(500).json({
+            error: 'Upload failed',
             details: error.message,
             stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
@@ -598,7 +610,7 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
 app.get('/assets', authenticateToken, async (req, res) => {
     let query = '';
     let params = [];
-    
+
     try {
         const { tenantId, fileType, propertyId, zoneId, limit: limitParam = 50, offset: offsetParam = 0 } = req.query;
         // Convert limit and offset to numbers
@@ -708,6 +720,13 @@ app.get('/assets', authenticateToken, async (req, res) => {
             paramIndex++;
         }
 
+        console.log('[Get Assets] Access Details:', {
+            requestedTenant: targetTenantId,
+            userTenant: req.user.tenantId,
+            userRole: role,
+            userId: userId
+        });
+
         query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
         params.push(limit, offset);
 
@@ -722,7 +741,7 @@ app.get('/assets', authenticateToken, async (req, res) => {
         });
 
         const result = await pool.query(query, params);
-        
+
         console.log('[Get Assets] Query executed successfully, rows returned:', result.rows.length);
 
         const assets = result.rows.map(asset => {
@@ -730,7 +749,7 @@ app.get('/assets', authenticateToken, async (req, res) => {
             const fileUrl = USE_S3
                 ? `${CDN_URL}/${asset.storage_path}`
                 : `/uploads/${asset.storage_path}`;
-            
+
             // Extract tenant ID and thumbnail name from thumbnail_path
             let thumbnailUrl = null;
             if (asset.thumbnail_path) {
@@ -784,7 +803,7 @@ app.get('/assets', authenticateToken, async (req, res) => {
         // Log the full query for debugging
         console.error('Full SQL query:', query);
         console.error('Query parameters:', params.map((p, i) => `$${i + 1} = ${typeof p === 'object' ? JSON.stringify(p) : p}`).join(', '));
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to fetch assets',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined,
             query: process.env.NODE_ENV === 'development' ? query.substring(0, 500) : undefined
@@ -979,19 +998,19 @@ app.post('/assets/:id/regenerate-thumbnail', authenticateToken, async (req, res)
     try {
         const { id } = req.params;
         const { tenantId } = req.user;
-        
+
         // Get video asset
         const assetResult = await pool.query(
             'SELECT * FROM public.media_assets WHERE id = $1 AND tenant_id = $2 AND file_type = $3',
             [id, tenantId, 'video']
         );
-        
+
         if (assetResult.rows.length === 0) {
             return res.status(404).json({ error: 'Video asset not found' });
         }
-        
+
         const asset = assetResult.rows[0];
-        
+
         // Get video file path
         let videoFilePath;
         if (USE_S3) {
@@ -1007,11 +1026,11 @@ app.post('/assets/:id/regenerate-thumbnail', authenticateToken, async (req, res)
                 videoFilePath = path.join(UPLOAD_DIR, asset.storage_path);
             }
         }
-        
+
         if (!fs.existsSync(videoFilePath)) {
             return res.status(404).json({ error: 'Video file not found at: ' + videoFilePath });
         }
-        
+
         // Generate thumbnail
         const thumbnailName = `${uuidv4()}_thumb.jpg`;
         const tempThumbnailPath = path.join(UPLOAD_DIR, tenantId, 'thumbnails', thumbnailName);
@@ -1019,10 +1038,10 @@ app.post('/assets/:id/regenerate-thumbnail', authenticateToken, async (req, res)
         if (!fs.existsSync(tenantThumbnailDir)) {
             fs.mkdirSync(tenantThumbnailDir, { recursive: true });
         }
-        
+
         try {
             const ffmpegCommand = `ffmpeg -i "${videoFilePath}" -ss 00:00:01 -vframes 1 -vf "scale=400:300:force_original_aspect_ratio=decrease" -y "${tempThumbnailPath}" 2>&1`;
-            
+
             try {
                 await execAsync(ffmpegCommand);
             } catch (execError) {
@@ -1031,26 +1050,26 @@ app.post('/assets/:id/regenerate-thumbnail', authenticateToken, async (req, res)
                     throw execError;
                 }
             }
-            
+
             // Wait a bit to ensure file is written
             await new Promise(resolve => setTimeout(resolve, 100));
-            
+
             if (!fs.existsSync(tempThumbnailPath)) {
                 throw new Error('Thumbnail file was not created');
             }
-            
+
             const thumbnailBuffer = fs.readFileSync(tempThumbnailPath);
             const thumbnailPath = `${tenantId}/thumbnails/${thumbnailName}`;
-            
+
             // Update database
             await pool.query(
                 'UPDATE public.media_assets SET thumbnail_path = $1 WHERE id = $2',
                 [thumbnailPath, id]
             );
-            
+
             console.log('[Regenerate] Video thumbnail generated for asset:', id);
-            res.json({ 
-                success: true, 
+            res.json({
+                success: true,
                 thumbnailUrl: `/uploads/${thumbnailPath}`,
                 message: 'Thumbnail regenerated successfully'
             });

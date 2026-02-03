@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Image as ImageIcon, Video, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import api from '../lib/api';
+import api, { API_BASE_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import './MediaLibraryPanel.css';
 
@@ -49,7 +49,7 @@ const MediaItem = React.memo(({ asset, onAddMedia }) => {
             <div className="media-item-preview">
                 {asset.fileType === 'image' ? (
                     <img
-                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${asset.thumbnailUrl || asset.url}`}
+                        src={`${API_BASE_URL}${asset.thumbnailUrl || asset.url}`}
                         alt={asset.originalName}
                         loading="lazy"
                     />
@@ -80,7 +80,7 @@ export default function MediaLibraryPanel({ searchTerm, onSearchChange, onAddMed
             // Fetch all assets (backend handles pagination internally for now)
             // In production, you might want to implement infinite scroll or fetch all pages
             const response = await api.get('/content/assets', {
-                params: { 
+                params: {
                     tenantId: user?.tenantId,
                     limit: 1000 // Fetch more items, but still limit for performance
                     // offset is handled by frontend pagination

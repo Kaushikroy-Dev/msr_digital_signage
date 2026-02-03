@@ -1,18 +1,19 @@
 import { useState } from 'react';
+import { API_BASE_URL } from '../lib/api';
 import { X, Image as ImageIcon } from 'lucide-react';
 import './BackgroundImagePicker.css';
 
-export default function BackgroundImagePicker({ 
-    value, 
-    onChange, 
+export default function BackgroundImagePicker({
+    value,
+    onChange,
     onRemove,
-    mediaAssets = [] 
+    mediaAssets = []
 }) {
     const [isOpen, setIsOpen] = useState(false);
-    
+
     const imageAssets = mediaAssets.filter(a => a.fileType === 'image');
     const selectedAsset = imageAssets.find(a => a.id === value);
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const apiUrl = API_BASE_URL;
 
     const handleSelect = (asset) => {
         onChange(asset.id);
@@ -24,7 +25,7 @@ export default function BackgroundImagePicker({
             <div className="background-image-picker">
                 {selectedAsset ? (
                     <div className="background-image-preview">
-                        <img 
+                        <img
                             src={`${apiUrl}${selectedAsset.url}`}
                             alt="Background"
                             className="preview-thumbnail"
@@ -68,7 +69,7 @@ export default function BackgroundImagePicker({
             <div className="background-image-picker-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h3>Select Background Image</h3>
-                    <button 
+                    <button
                         className="modal-close"
                         onClick={() => setIsOpen(false)}
                     >
@@ -90,7 +91,7 @@ export default function BackgroundImagePicker({
                                     className={`image-item ${selectedAsset?.id === asset.id ? 'selected' : ''}`}
                                     onClick={() => handleSelect(asset)}
                                 >
-                                    <img 
+                                    <img
                                         src={`${apiUrl}${asset.url}`}
                                         alt={asset.originalName || 'Image'}
                                         className="image-thumbnail"

@@ -1,4 +1,5 @@
 import React from 'react';
+import { API_BASE_URL } from '../lib/api';
 import { useDraggable } from '@dnd-kit/core';
 import { Clock, Cloud, QrCode, Globe, Type, Image as ImageIcon, Video } from 'lucide-react';
 import ResizeHandles from './ResizeHandles';
@@ -56,7 +57,7 @@ const ZoneElement = React.memo(function ZoneElement({
             if (zone.mediaAsset.fileType === 'image') {
                 return (
                     <img
-                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${zone.mediaAsset.thumbnailUrl || zone.mediaAsset.url}`}
+                        src={`${API_BASE_URL}${zone.mediaAsset.thumbnailUrl || zone.mediaAsset.url}`}
                         alt={zone.mediaAsset.originalName}
                         style={{
                             width: '100%',

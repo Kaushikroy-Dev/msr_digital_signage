@@ -5,9 +5,17 @@ require('dotenv').config();
 
 const app = express();
 // CORS configuration
-const corsOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['http://localhost:5173'];
+const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:4173'];
 app.use(cors({
-    origin: corsOrigins,
+    origin: function (origin, callback) {
+        if (!origin || corsOrigins.indexOf(origin) !== -1 || origin.endsWith('.railway.app')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
 const jwt = require('jsonwebtoken');
@@ -23,7 +31,14 @@ function authenticateToken(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ error: 'Forbidden' });
+        if (err) {
+            console.error('[Auth] JWT Verification failed:', err.message);
+            return res.status(401).json({
+                error: 'Unauthorized',
+                details: err.message,
+                hint: 'Try logging out and in again.'
+            });
+        }
         req.user = user;
         next();
     });
@@ -86,7 +101,7 @@ function getDatabaseConfig() {
         passwordSet: !!config.password && config.password !== 'postgres',
         passwordLength: config.password ? config.password.length : 0,
         source: process.env.DATABASE_URL ? 'DATABASE_URL' :
-                process.env.PGHOST ? 'PG* variables' :
+            process.env.PGHOST ? 'PG* variables' :
                 process.env.DATABASE_HOST ? 'DATABASE_* variables' : 'defaults',
         envVars: {
             hasDATABASE_URL: !!process.env.DATABASE_URL,
@@ -112,7 +127,7 @@ async function testDatabaseConnection(retries = 5, delay = 2000) {
             const client = await pool.connect();
             const result = await client.query('SELECT version(), current_database(), current_user');
             client.release();
-            
+
             console.log('✅ Database connection successful');
             console.log('   Database:', result.rows[0].current_database);
             console.log('   User:', result.rows[0].current_user);
@@ -121,7 +136,7 @@ async function testDatabaseConnection(retries = 5, delay = 2000) {
         } catch (error) {
             const errorMsg = error.message;
             console.error(`❌ Database connection attempt ${i + 1}/${retries} failed:`, errorMsg);
-            
+
             // Provide helpful error messages
             if (errorMsg.includes('password authentication failed')) {
                 console.error('   💡 This usually means:');
@@ -135,7 +150,7 @@ async function testDatabaseConnection(retries = 5, delay = 2000) {
                 console.error('      - PostgreSQL service is not running');
                 console.error('   🔧 Fix: Verify PostgreSQL service is running and host is correct');
             }
-            
+
             if (i < retries - 1) {
                 console.log(`⏳ Retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));

@@ -10,6 +10,71 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ============================================
+// DATABASE INITIALIZATION (Auto-create Admin)
+// ============================================
+async function initializeAdmin() {
+    let client;
+    try {
+        console.log('🔍 [Initialization] Checking for administrative users...');
+        const result = await pool.query('SELECT COUNT(*) FROM users WHERE role = $1', ['super_admin']);
+        const count = parseInt(result.rows[0].count);
+
+        if (count === 0) {
+            console.log('🌱 [Initialization] No super admin found. Initializing system...');
+
+            client = await pool.connect();
+            await client.query('BEGIN');
+
+            // 1. Ensure a tenant exists
+            let tenantId;
+            const tenants = await client.query('SELECT id FROM tenants LIMIT 1');
+            if (tenants.rows.length > 0) {
+                tenantId = tenants.rows[0].id;
+                console.log(`📡 [Initialization] Using existing tenant: ${tenantId}`);
+            } else {
+                const newTenant = await client.query(`
+                    INSERT INTO tenants (name, subdomain, subscription_tier)
+                    VALUES ($1, $2, $3)
+                    RETURNING id
+                `, ['System Admin Organization', 'admin', 'enterprise']);
+                tenantId = newTenant.rows[0].id;
+                console.log(`🏢 [Initialization] Created new tenant: ${tenantId}`);
+            }
+
+            // 2. Create the super admin user
+            const email = 'admin@admin.com';
+            const password = 'password123'; // Default password for initial setup
+            const passwordHash = await bcrypt.hash(password, 10);
+
+            await client.query(`
+                INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, role)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            `, [tenantId, email, passwordHash, 'System', 'Admin', 'super_admin']);
+
+            await client.query('COMMIT');
+            console.log('====================================================');
+            console.log('✅ SYSTEM INITIALIZED SUCCESSFULLY');
+            console.log(`✅ Default Super Admin: ${email}`);
+            console.log(`✅ Default Password: ${password}`);
+            console.log('====================================================');
+        } else {
+            console.log(`✅ [Initialization] System already has ${count} super admin(s).`);
+        }
+    } catch (error) {
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch (e) { }
+        }
+        console.error('❌ [Initialization] Database initialization failed:', error);
+        // We don't exit the process because the app might still work if DB is temporarily down
+    } finally {
+        if (client) client.release();
+    }
+}
+
+// Run initialization with a slight delay to ensure DB connection is stable
+setTimeout(initializeAdmin, 3000);
+
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
 
@@ -506,7 +571,7 @@ app.get('/analytics/activity', authenticateToken, async (req, res) => {
             let actionText = row.action
                 .replace(/_/g, ' ') // Replace all underscores with spaces
                 .replace(/\b\w/g, l => l.toUpperCase()); // Capitalize first letter of each word
-            
+
             if (row.resource_type) {
                 actionText = `${actionText} ${row.resource_type}`;
             }

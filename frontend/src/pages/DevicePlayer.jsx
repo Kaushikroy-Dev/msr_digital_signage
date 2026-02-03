@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import api from '../lib/api';
+import api, { API_BASE_URL } from '../lib/api';
 import MediaPlayer from '../components/MediaPlayer';
 import TemplateRenderer from '../components/TemplateRenderer';
 import { detectPlatform, getDeviceInfo } from '../utils/platformDetection';
@@ -103,7 +103,7 @@ export default function DevicePlayer() {
 
         const connect = () => {
             // Use environment variable with fallback, consistent with API client
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const apiUrl = API_BASE_URL;
             const wsUrl = apiUrl.replace(/^http/, 'ws').replace(/^https/, 'wss') + '/ws';
             console.log('[Player] Connecting to WebSocket:', wsUrl);
 
@@ -448,7 +448,7 @@ export default function DevicePlayer() {
                     template={currentItem.template}
                     duration={currentItem.duration_seconds}
                     onComplete={handleMediaComplete}
-                    apiUrl={import.meta.env.VITE_API_URL || 'http://localhost:3000'}
+                    apiUrl={API_BASE_URL}
                 />
             </div>
         );
