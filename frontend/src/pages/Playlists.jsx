@@ -21,6 +21,11 @@ export default function Playlists() {
     const [selectedPropertyId, setSelectedPropertyId] = useState('');
     const [selectedZoneId, setSelectedZoneId] = useState('');
 
+    // Debug: Log when isCreatingPlaylist changes
+    useEffect(() => {
+        console.log('[Create Playlist] Modal state changed:', isCreatingPlaylist);
+    }, [isCreatingPlaylist]);
+
     // Editor States (local feedback before mutation)
     const [localPlaylistData, setLocalPlaylistData] = useState({
         name: '',
@@ -90,14 +95,14 @@ export default function Playlists() {
     const createMutation = useMutation({
         mutationFn: async (data) => {
             const payload = { ...data, tenantId: user.tenantId };
-            
+
             console.log('[Create Playlist] Mutation called with:', {
                 data,
                 selectedPropertyId,
                 selectedZoneId,
                 role: user.role
             });
-            
+
             // Add propertyId and zoneId based on user role
             if (user.role === 'super_admin') {
                 if (!selectedPropertyId) {
@@ -118,7 +123,7 @@ export default function Playlists() {
                 payload.zoneId = selectedZoneId;
             }
             // For zone_admin and content_editor, backend will auto-assign
-            
+
             console.log('[Create Playlist] Sending payload:', payload);
             const response = await api.post('/schedules/playlists', payload);
             return response.data;
@@ -132,9 +137,11 @@ export default function Playlists() {
             setSelectedZoneId('');
         },
         onError: (error) => {
-            console.error('[Create Playlist] Error:', error);
+            console.error('[Create Playlist] Mutation Error:', error);
+            console.error('[Create Playlist] Error Response:', error.response);
+            console.error('[Create Playlist] Error Data:', error.response?.data);
             const errorMessage = error.response?.data?.error || error.message || 'Failed to create playlist';
-            alert(errorMessage);
+            alert(`Error creating playlist: ${errorMessage}`);
         }
     });
 
@@ -247,9 +254,9 @@ export default function Playlists() {
     }, [selectedPlaylist]);
 
     // Render Logic
-    if (selectedPlaylist) {
-        return (
-            <div className="playlists-page">
+    return (
+        <div className="playlists-page">
+            {selectedPlaylist ? (
                 <div className="playlist-editor-new">
                     <div className="editor-header">
                         <div className="back-header">
@@ -394,236 +401,247 @@ export default function Playlists() {
                         </div>
                     </div>
                 </div>
-
-                {isMediaModalOpen && (
-                    <div className="modal-overlay" onClick={() => setIsMediaModalOpen(false)}>
-                        <div className="modal-content modern-modal-content" onClick={e => e.stopPropagation()}>
-                            <div className="modal-header">
-                                <h2>Select Media Asset</h2>
-                                <button className="btn-icon" onClick={() => setIsMediaModalOpen(false)}><X size={20} /></button>
-                            </div>
-                            <div className="tab-container">
-                                <button className={`tab-btn ${contentTab === 'media' ? 'active' : ''}`} onClick={() => setContentTab('media')}>Assets</button>
-                                <button className={`tab-btn ${contentTab === 'templates' ? 'active' : ''}`} onClick={() => setContentTab('templates')}>Templates</button>
-                            </div>
-                            <div className="modal-body" style={{ maxHeight: '70vh' }}>
-                                <div className="asset-selection-grid">
-                                    {contentTab === 'media' ? (
-                                        mediaAssets?.map(asset => (
-                                            <div
-                                                key={asset.id}
-                                                className="asset-card-select"
-                                                onClick={() => addItemMutation.mutate({
-                                                    playlistId: selectedPlaylist.id,
-                                                    assetId: asset.id,
-                                                    duration: asset.fileType === 'video' ? 30 : 10
-                                                })}
-                                            >
-                                                {asset.thumbnailUrl ? (
-                                                    <img src={`${import.meta.env.VITE_API_URL}${asset.thumbnailUrl}`} className="asset-thumb-small" alt="" />
-                                                ) : (
-                                                    <div className="asset-thumb-small" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--background)' }}>
-                                                        {asset.fileType === 'video' ? <Video size={32} color="var(--border)" /> : <Image size={32} color="var(--border)" />}
-                                                    </div>
-                                                )}
-                                                <div className="asset-info-small">
-                                                    <span className="asset-name-small" style={{ color: 'var(--text-primary)' }}>{asset.originalName}</span>
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{asset.fileType}</span>
-                                                </div>
-                                                <div className="select-indicator"><Plus size={12} /></div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        templates?.map(tpl => (
-                                            <div
-                                                key={tpl.id}
-                                                className="asset-card-select"
-                                                onClick={() => addTemplateMutation.mutate({ playlistId: selectedPlaylist.id, templateId: tpl.id, duration: 10 })}
-                                            >
-                                                <div className="asset-thumb-small" style={{ background: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Layout size={40} color="var(--border)" strokeWidth={1.5} />
-                                                </div>
-                                                <div className="asset-info-small">
-                                                    <span className="asset-name-small" style={{ color: 'var(--text-primary)' }}>{tpl.name}</span>
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Template</span>
-                                                </div>
-                                                <div className="select-indicator"><Plus size={12} /></div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
+            ) : (
+                <>
+                    <div className="page-header">
+                        <div className="header-title">
+                            <h1 style={{ color: 'var(--text-primary)', background: 'none', WebkitTextFillColor: 'initial' }}>Playlists</h1>
+                            <p style={{ color: 'var(--text-secondary)' }}>{playlists?.length || 0} active playlists • Manage sequential playback</p>
                         </div>
+                        <button
+                            className="btn btn-primary"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('[Create Playlist] Button clicked, opening modal');
+                                setIsCreatingPlaylist(true);
+                            }}
+                            type="button"
+                        >
+                            <Plus size={20} /> Create Playlist
+                        </button>
                     </div>
-                )}
-                {previewPlaylist && <PlaylistPreview playlistId={previewPlaylist.id} onClose={() => setPreviewPlaylist(null)} />}
-                
-                {/* Create Playlist Modal */}
-                {isCreatingPlaylist && (
-                    <div className="modal-overlay" onClick={() => setIsCreatingPlaylist(false)}>
-                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                            <div className="modal-header">
-                                <h2>Create New Playlist</h2>
-                                <button className="modal-close" onClick={() => setIsCreatingPlaylist(false)}>
-                                    <X size={20} />
-                                </button>
-                            </div>
-                            <div className="modal-body">
-                                <div className="form-group">
-                                    <label>Playlist Name *</label>
-                                    <input
-                                        type="text"
-                                        className="input"
-                                        value={newPlaylistName}
-                                        onChange={(e) => setNewPlaylistName(e.target.value)}
-                                        placeholder="Enter playlist name"
-                                        autoFocus
-                                    />
-                                </div>
-                                
-                                {(user?.role === 'super_admin' || user?.role === 'property_admin') && (
-                                    <div className="form-group">
-                                        <PropertyZoneSelector
-                                            selectedPropertyId={selectedPropertyId}
-                                            selectedZoneId={selectedZoneId}
-                                            onPropertyChange={setSelectedPropertyId}
-                                            onZoneChange={setSelectedZoneId}
-                                            required={user?.role === 'super_admin'}
-                                            showZone={user?.role === 'property_admin' || user?.role === 'super_admin'}
-                                        />
+
+                    <div className="search-container">
+                        <input
+                            className="input"
+                            placeholder="Search by playlist name..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            style={{ paddingLeft: '2.8rem' }}
+                        />
+                        <div className="search-icon"><Search size={18} /></div>
+                    </div>
+
+                    <div className="playlists-grid">
+                        {filteredPlaylists?.map((playlist) => (
+                            <div key={playlist.id} className="playlist-card" onClick={() => setSelectedPlaylist(playlist)}>
+                                <div className="card-thumbnail-container collage-2">
+                                    <img src={playlist.thumbnails?.[0] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[0]}` : `https://picsum.photos/seed/${playlist.id}1/400/300`} className="thumb-img" alt="" />
+                                    <img src={playlist.thumbnails?.[1] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[1]}` : `https://picsum.photos/seed/${playlist.id}2/400/300`} className="thumb-img" alt="" />
+                                    <div className="item-count-badge">{playlist.itemCount || 0} items</div>
+                                    <div className="card-actions-overlay" onClick={e => e.stopPropagation()}>
+                                        <button className="action-btn-sm" onClick={() => setAssigningPlaylist(playlist.id)} title="Assign to Devices"><Monitor size={16} /></button>
+                                        <button className="action-btn-sm" onClick={() => setPreviewPlaylist(playlist)} title="Preview"><Eye size={16} /></button>
+                                        <button className="action-btn-sm" onClick={() => {
+                                            if (confirm('Delete this playlist permanent?')) deletePlaylistMutation.mutate(playlist.id);
+                                        }} title="Delete"><Trash2 size={16} /></button>
                                     </div>
-                                )}
-                                
-                                <div className="form-group">
-                                    <label>Transition Effect</label>
-                                    <select
-                                        className="input"
-                                        value={localPlaylistData.transitionEffect}
-                                        onChange={(e) => setLocalPlaylistData({ ...localPlaylistData, transitionEffect: e.target.value })}
-                                    >
-                                        <option value="fade">Fade</option>
-                                        <option value="slide">Slide</option>
-                                        <option value="none">None</option>
-                                    </select>
                                 </div>
-                                
+                                <div className="card-body">
+                                    <h3 style={{ color: 'var(--text-primary)' }}>{playlist.name}</h3>
+                                    <p style={{ color: 'var(--text-secondary)' }}>{playlist.description || 'Global sequential content for digital signage nodes.'}</p>
+                                    <div className="card-footer" style={{ borderTopColor: 'var(--border)' }}>
+                                        <div className="footer-tag" style={{ background: 'var(--background)', color: 'var(--text-secondary)' }}><Play size={12} /> {formatDurationSeconds(playlist.totalDuration)}</div>
+                                        <div className="footer-tag" style={{ background: 'var(--background)', color: 'var(--text-secondary)' }}>{playlist.transition_effect}</div>
+                                        {playlist.is_shared && <div className="footer-tag shared" style={{ background: 'rgba(25, 118, 210, 0.1)', color: 'var(--primary)' }}><Share2 size={12} /> Shared</div>}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+
+            {/* Modals - Shared between views */}
+            {isMediaModalOpen && selectedPlaylist && (
+                <div className="modal-overlay" onClick={() => setIsMediaModalOpen(false)}>
+                    <div className="modal-content modern-modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Select Media Asset</h2>
+                            <button className="btn-icon" onClick={() => setIsMediaModalOpen(false)}><X size={20} /></button>
+                        </div>
+                        <div className="tab-container">
+                            <button className={`tab-btn ${contentTab === 'media' ? 'active' : ''}`} onClick={() => setContentTab('media')}>Assets</button>
+                            <button className={`tab-btn ${contentTab === 'templates' ? 'active' : ''}`} onClick={() => setContentTab('templates')}>Templates</button>
+                        </div>
+                        <div className="modal-body" style={{ maxHeight: '70vh' }}>
+                            <div className="asset-selection-grid">
+                                {contentTab === 'media' ? (
+                                    mediaAssets?.map(asset => (
+                                        <div
+                                            key={asset.id}
+                                            className="asset-card-select"
+                                            onClick={() => addItemMutation.mutate({
+                                                playlistId: selectedPlaylist.id,
+                                                assetId: asset.id,
+                                                duration: asset.fileType === 'video' ? 30 : 10
+                                            })}
+                                        >
+                                            {asset.thumbnailUrl ? (
+                                                <img src={`${import.meta.env.VITE_API_URL}${asset.thumbnailUrl}`} className="asset-thumb-small" alt="" />
+                                            ) : (
+                                                <div className="asset-thumb-small" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--background)' }}>
+                                                    {asset.fileType === 'video' ? <Video size={32} color="var(--border)" /> : <Image size={32} color="var(--border)" />}
+                                                </div>
+                                            )}
+                                            <div className="asset-info-small">
+                                                <span className="asset-name-small" style={{ color: 'var(--text-primary)' }}>{asset.originalName}</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{asset.fileType}</span>
+                                            </div>
+                                            <div className="select-indicator"><Plus size={12} /></div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    templates?.map(tpl => (
+                                        <div
+                                            key={tpl.id}
+                                            className="asset-card-select"
+                                            onClick={() => addTemplateMutation.mutate({ playlistId: selectedPlaylist.id, templateId: tpl.id, duration: 10 })}
+                                        >
+                                            <div className="asset-thumb-small" style={{ background: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Layout size={40} color="var(--border)" strokeWidth={1.5} />
+                                            </div>
+                                            <div className="asset-info-small">
+                                                <span className="asset-name-small" style={{ color: 'var(--text-primary)' }}>{tpl.name}</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Template</span>
+                                            </div>
+                                            <div className="select-indicator"><Plus size={12} /></div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isCreatingPlaylist && (
+                <div className="modal-overlay" onClick={() => setIsCreatingPlaylist(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Create New Playlist</h2>
+                            <button className="modal-close" onClick={() => setIsCreatingPlaylist(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>Playlist Name *</label>
+                                <input
+                                    type="text"
+                                    className="input"
+                                    value={newPlaylistName}
+                                    onChange={(e) => setNewPlaylistName(e.target.value)}
+                                    placeholder="Enter playlist name"
+                                    autoFocus
+                                />
+                            </div>
+
+                            {(user?.role === 'super_admin' || user?.role === 'property_admin') && (
                                 <div className="form-group">
-                                    <label>Transition Duration (ms)</label>
-                                    <input
-                                        type="number"
-                                        className="input"
-                                        value={localPlaylistData.transitionDuration}
-                                        onChange={(e) => setLocalPlaylistData({ ...localPlaylistData, transitionDuration: parseInt(e.target.value) || 1000 })}
-                                        min="0"
-                                        max="5000"
-                                        step="100"
+                                    <PropertyZoneSelector
+                                        selectedPropertyId={selectedPropertyId}
+                                        selectedZoneId={selectedZoneId}
+                                        onPropertyChange={(propertyId) => {
+                                            console.log('[Create Playlist] Property changed:', propertyId);
+                                            setSelectedPropertyId(propertyId);
+                                        }}
+                                        onZoneChange={(zoneId) => {
+                                            console.log('[Create Playlist] Zone changed:', zoneId);
+                                            setSelectedZoneId(zoneId);
+                                        }}
+                                        required={user?.role === 'super_admin'}
+                                        showZone={user?.role === 'property_admin' || user?.role === 'super_admin'}
                                     />
                                 </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button className="btn btn-secondary" onClick={() => setIsCreatingPlaylist(false)}>
-                                    Cancel
-                                </button>
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={() => {
-                                        console.log('[Create Playlist] Button clicked:', {
-                                            newPlaylistName,
-                                            selectedPropertyId,
-                                            selectedZoneId,
-                                            role: user?.role
-                                        });
-                                        
-                                        if (!newPlaylistName.trim()) {
-                                            alert('Please enter a playlist name');
-                                            return;
-                                        }
-                                        
-                                        // Validate required fields based on role BEFORE calling mutation
-                                        if (user?.role === 'super_admin') {
-                                            if (!selectedPropertyId || selectedPropertyId === '') {
-                                                alert('Please select a property before creating the playlist');
-                                                console.error('[Create Playlist] Validation failed: propertyId is', selectedPropertyId);
-                                                return;
-                                            }
-                                        }
-                                        if (user?.role === 'property_admin') {
-                                            if (!selectedZoneId || selectedZoneId === '') {
-                                                alert('Please select a zone before creating the playlist');
-                                                console.error('[Create Playlist] Validation failed: zoneId is', selectedZoneId);
-                                                return;
-                                            }
-                                        }
-                                        
-                                        console.log('[Create Playlist] Validation passed, calling mutation');
-                                        createMutation.mutate({
-                                            name: newPlaylistName,
-                                            transitionEffect: localPlaylistData.transitionEffect,
-                                            transitionDuration: localPlaylistData.transitionDuration
-                                        });
-                                    }}
-                                    disabled={createMutation.isPending}
+                            )}
+
+                            <div className="form-group">
+                                <label>Transition Effect</label>
+                                <select
+                                    className="input"
+                                    value={localPlaylistData.transitionEffect}
+                                    onChange={(e) => setLocalPlaylistData({ ...localPlaylistData, transitionEffect: e.target.value })}
                                 >
-                                    {createMutation.isPending ? 'Creating...' : 'Create Playlist'}
-                                </button>
+                                    <option value="fade">Fade</option>
+                                    <option value="slide">Slide</option>
+                                    <option value="wipe">Wipe</option>
+                                    <option value="zoom">Zoom</option>
+                                    <option value="none">None</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Transition Duration (ms)</label>
+                                <input
+                                    type="number"
+                                    className="input"
+                                    value={localPlaylistData.transitionDuration}
+                                    onChange={(e) => setLocalPlaylistData({ ...localPlaylistData, transitionDuration: parseInt(e.target.value) || 1000 })}
+                                    min="0"
+                                    max="5000"
+                                    step="100"
+                                />
                             </div>
                         </div>
-                    </div>
-                )}
-            </div>
-        );
-    }
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setIsCreatingPlaylist(false)}>
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
 
-    return (
-        <div className="playlists-page">
-            <div className="page-header">
-                <div className="header-title">
-                    <h1 style={{ color: 'var(--text-primary)', background: 'none', WebkitTextFillColor: 'initial' }}>Playlists</h1>
-                    <p style={{ color: 'var(--text-secondary)' }}>{playlists?.length || 0} active playlists • Manage sequential playback</p>
+                                    console.log('[Create Playlist] Create button clicked', {
+                                        newPlaylistName,
+                                        selectedPropertyId,
+                                        selectedZoneId,
+                                        role: user?.role
+                                    });
+
+                                    if (!newPlaylistName.trim()) {
+                                        alert('Please enter a playlist name');
+                                        return;
+                                    }
+
+                                    // Validate required fields based on role
+                                    if (user?.role === 'super_admin' && !selectedPropertyId) {
+                                        alert('Please select a property');
+                                        return;
+                                    }
+                                    if (user?.role === 'property_admin' && !selectedZoneId) {
+                                        alert('Please select a zone');
+                                        return;
+                                    }
+
+                                    createMutation.mutate({
+                                        name: newPlaylistName,
+                                        transitionEffect: localPlaylistData.transitionEffect,
+                                        transitionDuration: localPlaylistData.transitionDuration
+                                    });
+                                }}
+                                disabled={createMutation.isPending}
+                            >
+                                {createMutation.isPending ? 'Creating...' : 'Create Playlist'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <button className="btn btn-primary" onClick={() => setIsCreatingPlaylist(true)}>
-                    <Plus size={20} /> Create Playlist
-                </button>
-            </div>
-
-            <div className="search-container">
-                <input
-                    className="input"
-                    placeholder="Search by playlist name..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{ paddingLeft: '2.8rem' }}
-                />
-                <div className="search-icon"><Search size={18} /></div>
-            </div>
-
-            <div className="playlists-grid">
-                {filteredPlaylists?.map((playlist) => (
-                    <div key={playlist.id} className="playlist-card" onClick={() => setSelectedPlaylist(playlist)}>
-                        <div className="card-thumbnail-container collage-2">
-                            <img src={playlist.thumbnails?.[0] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[0]}` : `https://picsum.photos/seed/${playlist.id}1/400/300`} className="thumb-img" alt="" />
-                            <img src={playlist.thumbnails?.[1] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[1]}` : `https://picsum.photos/seed/${playlist.id}2/400/300`} className="thumb-img" alt="" />
-                            <div className="item-count-badge">{playlist.itemCount || 0} items</div>
-                            <div className="card-actions-overlay" onClick={e => e.stopPropagation()}>
-                                <button className="action-btn-sm" onClick={() => setAssigningPlaylist(playlist.id)} title="Assign to Devices"><Monitor size={16} /></button>
-                                <button className="action-btn-sm" onClick={() => setPreviewPlaylist(playlist)} title="Preview"><Eye size={16} /></button>
-                                <button className="action-btn-sm" onClick={() => {
-                                    if (confirm('Delete this playlist permanent?')) deletePlaylistMutation.mutate(playlist.id);
-                                }} title="Delete"><Trash2 size={16} /></button>
-                            </div>
-                        </div>
-                        <div className="card-body">
-                            <h3 style={{ color: 'var(--text-primary)' }}>{playlist.name}</h3>
-                            <p style={{ color: 'var(--text-secondary)' }}>{playlist.description || 'Global sequential content for digital signage nodes.'}</p>
-                            <div className="card-footer" style={{ borderTopColor: 'var(--border)' }}>
-                                <div className="footer-tag" style={{ background: 'var(--background)', color: 'var(--text-secondary)' }}><Play size={12} /> {formatDurationSeconds(playlist.totalDuration)}</div>
-                                <div className="footer-tag" style={{ background: 'var(--background)', color: 'var(--text-secondary)' }}>{playlist.transition_effect}</div>
-                                {playlist.is_shared && <div className="footer-tag shared" style={{ background: 'rgba(25, 118, 210, 0.1)', color: 'var(--primary)' }}><Share2 size={12} /> Shared</div>}
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
+            )}
 
             {assigningPlaylist && (
                 <div className="modal-overlay" onClick={() => setAssigningPlaylist(null)}>
