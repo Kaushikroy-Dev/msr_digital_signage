@@ -10,6 +10,28 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
+// WebSocket clients map - must be defined before proxyOptions
+const clients = new Map(); // deviceId -> WebSocket connection
+
+// Broadcast message to specific device
+function sendToDevice(deviceId, message) {
+  const client = clients.get(deviceId);
+  if (client && client.readyState === WebSocket.OPEN) {
+    client.send(JSON.stringify(message));
+    return true;
+  }
+  return false;
+}
+
+// Broadcast to all devices
+function broadcastToAll(message) {
+  clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(message));
+    }
+  });
+}
+
 // CORS configuration - MUST be FIRST to handle preflight correctly
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
@@ -451,26 +473,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// Broadcast message to specific device
-function sendToDevice(deviceId, message) {
-  const client = clients.get(deviceId);
-  if (client && client.readyState === WebSocket.OPEN) {
-    client.send(JSON.stringify(message));
-    return true;
-  }
-  return false;
-}
-
-// Broadcast to all devices
-function broadcastToAll(message) {
-  clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message));
-    }
-  });
-}
-
-// Export broadcast functions for use by other services
+// Export broadcast functions for use by other services (already defined above)
 app.locals.sendToDevice = sendToDevice;
 app.locals.broadcastToAll = broadcastToAll;
 
