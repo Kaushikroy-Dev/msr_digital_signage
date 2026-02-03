@@ -20,33 +20,88 @@ const isLocal = hostname === 'localhost' ||
 const PRODUCTION_GATEWAY = 'https://api-gateway-production-d887.up.railway.app';
 let selectedBaseUrl = '';
 
-// CRITICAL: If we are on a production Railway domain, FORCE the production gateway
-// This prevents issues where VITE_API_URL might be baked in as localhost:3000
+// CRITICAL: Runtime detection - ALWAYS check hostname first, ignore VITE_API_URL if it's localhost
+// This prevents issues where VITE_API_URL might be baked in as localhost:3000 from old builds
+const viteApiUrl = import.meta.env.VITE_API_URL || '';
+const isViteUrlLocalhost = viteApiUrl.includes('localhost') || viteApiUrl.includes('127.0.0.1');
+
+// If we're on Railway domain OR not local, ALWAYS use production gateway
+// Even if VITE_API_URL is set to localhost (from old build), override it
 if (hostname.endsWith('.railway.app') || (hostname && !isLocal)) {
-    console.log('[API-V3] Production environment detected. Forcing production gateway.');
+    console.log('[API-V4] Production environment detected. Forcing production gateway.');
+    console.log('[API-V4] Hostname:', hostname);
+    console.log('[API-V4] VITE_API_URL from build:', viteApiUrl);
+    console.log('[API-V4] Overriding with production gateway');
     selectedBaseUrl = PRODUCTION_GATEWAY;
+} else if (isLocal) {
+    // Local dev logic - only use VITE_API_URL if it's not localhost (edge case)
+    if (viteApiUrl && !isViteUrlLocalhost) {
+        selectedBaseUrl = viteApiUrl;
+        console.log('[API-V4] Local environment - using VITE_API_URL:', viteApiUrl);
+    } else {
+        selectedBaseUrl = 'http://localhost:3000';
+        console.log('[API-V4] Local environment - using default localhost:3000');
+    }
 } else {
-    // Local dev logic
-    selectedBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-    console.log('[API-V3] Local environment detected.');
+    // Fallback: use VITE_API_URL if provided and not localhost
+    if (viteApiUrl && !isViteUrlLocalhost) {
+        selectedBaseUrl = viteApiUrl;
+    } else {
+        // Last resort: use production gateway
+        selectedBaseUrl = PRODUCTION_GATEWAY;
+        console.warn('[API-V4] Unknown environment, defaulting to production gateway');
+    }
 }
 
 // Remove trailing slash if present
 export const API_BASE_URL = selectedBaseUrl.replace(/\/$/, '');
 
-console.log('[API-V3] Final Configuration:', {
+// CRITICAL: Final validation - NEVER allow localhost in production
+if (!isLocal && (API_BASE_URL.includes('localhost') || API_BASE_URL.includes('127.0.0.1'))) {
+    console.error('[API-V4] CRITICAL: Detected localhost URL in production! Overriding to production gateway.');
+    console.error('[API-V4] This indicates a cached build issue. Please clear browser cache.');
+    selectedBaseUrl = PRODUCTION_GATEWAY;
+}
+
+const FINAL_API_BASE_URL = selectedBaseUrl.replace(/\/$/, '');
+
+console.log('[API-V4] Final Configuration:', {
     hostname,
     isLocal,
-    selectedBaseUrl: API_BASE_URL,
-    envViteUrl: import.meta.env.VITE_API_URL
+    selectedBaseUrl: FINAL_API_BASE_URL,
+    envViteUrl: import.meta.env.VITE_API_URL,
+    isViteUrlLocalhost,
+    warning: !isLocal && FINAL_API_BASE_URL.includes('localhost') ? 'CRITICAL: Using localhost in production!' : null
 });
 
+export { FINAL_API_BASE_URL as API_BASE_URL };
+
+// Use the validated API_BASE_URL
 const api = axios.create({
     baseURL: `${API_BASE_URL}/api`,
     headers: {
         'Content-Type': 'application/json',
     },
+    timeout: 30000, // 30 second timeout
 });
+
+// Add request interceptor to log and validate URLs
+api.interceptors.request.use(
+    (config) => {
+        const fullUrl = `${config.baseURL}${config.url}`;
+        if (fullUrl.includes('localhost:3000') && !isLocal) {
+            console.error('[API-V4] CRITICAL ERROR: Attempting to call localhost:3000 from production!');
+            console.error('[API-V4] Full URL:', fullUrl);
+            console.error('[API-V4] Base URL:', config.baseURL);
+            console.error('[API-V4] This is a cached build issue. Please clear browser cache immediately.');
+            // Force redirect to production gateway
+            config.baseURL = `${PRODUCTION_GATEWAY}/api`;
+            console.error('[API-V4] Overridden to:', config.baseURL);
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
