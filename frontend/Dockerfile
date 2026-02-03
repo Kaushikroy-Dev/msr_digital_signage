@@ -22,5 +22,8 @@ RUN npm run build
 EXPOSE 3000
 
 # Serve the built application using npx to ensure serve is found in node_modules/.bin
-CMD npx serve -s dist -l $PORT
+# -s flag enables SPA mode (serve index.html for all routes)
+# -l flag sets listen port
+# Use PORT environment variable (Railway provides this)
+CMD npx serve -s dist -l ${PORT:-3000}
 
