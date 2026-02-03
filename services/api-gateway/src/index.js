@@ -15,6 +15,14 @@ const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : ['http://localhost:5173', 'http://localhost:3001', 'http://localhost:4173', 'http://localhost:3000'];
 
+// CRITICAL: Explicitly add frontend production URL if not already present
+const FRONTEND_PRODUCTION_URL = 'https://frontend-production-73c0.up.railway.app';
+if (corsOrigins.indexOf(FRONTEND_PRODUCTION_URL) === -1) {
+  corsOrigins.push(FRONTEND_PRODUCTION_URL);
+  console.log(`[CORS] Added frontend production URL to allowed origins: ${FRONTEND_PRODUCTION_URL}`);
+}
+console.log(`[CORS] Allowed origins:`, corsOrigins);
+
 // Helper function to check if origin is allowed
 function isOriginAllowed(origin) {
   if (!origin) return true;
@@ -63,9 +71,19 @@ app.options('*', (req, res) => {
     requestHeaders
   });
   
-  if (isOriginAllowed(origin)) {
-    // Set all required CORS headers
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  // Always allow Railway domains and explicitly check origin
+  const isAllowed = isOriginAllowed(origin);
+  console.log(`[CORS] Origin check for ${origin}:`, {
+    isAllowed,
+    isRailway: origin && (origin.endsWith('.railway.app') || origin.endsWith('up.railway.app')),
+    inCorsOrigins: origin && corsOrigins.indexOf(origin) !== -1
+  });
+  
+  if (isAllowed) {
+    // CRITICAL: Set Access-Control-Allow-Origin to the EXACT origin (not *)
+    // This is required for credentials: true
+    const allowedOrigin = origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', requestHeaders || 'Content-Type, Authorization, X-Requested-With');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -73,15 +91,17 @@ app.options('*', (req, res) => {
     
     console.log(`[CORS] Preflight request ALLOWED for origin: ${origin}`);
     console.log(`[CORS] Response headers set:`, {
-      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
       'Access-Control-Allow-Headers': requestHeaders || 'Content-Type, Authorization, X-Requested-With'
     });
     
-    res.status(200).end();
+    // Send response immediately
+    return res.status(200).end();
   } else {
-    console.warn(`[CORS] Preflight request BLOCKED for origin: ${origin}`);
-    res.status(403).end();
+    console.error(`[CORS] Preflight request BLOCKED for origin: ${origin}`);
+    console.error(`[CORS] Allowed origins:`, corsOrigins);
+    res.status(403).json({ error: 'CORS policy: Origin not allowed' }).end();
   }
 });
 
