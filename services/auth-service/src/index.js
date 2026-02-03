@@ -142,6 +142,15 @@ app.post('/register', async (req, res) => {
     }
 });
 
+// Login endpoint - GET handler for better error message
+app.get('/login', (req, res) => {
+    res.status(405).json({ 
+        error: 'Method not allowed',
+        message: 'Login endpoint only accepts POST requests. Please use the frontend login form.',
+        allowedMethods: ['POST']
+    });
+});
+
 // Login
 app.post('/login', async (req, res) => {
     try {
