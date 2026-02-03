@@ -17,58 +17,51 @@ async function initializeAdmin() {
     let client;
     try {
         console.log('🔍 [Initialization] Checking for administrative users...');
-        const result = await pool.query('SELECT COUNT(*) FROM users WHERE role = $1', ['super_admin']);
-        const count = parseInt(result.rows[0].count);
 
-        if (count === 0) {
-            console.log('🌱 [Initialization] No super admin found. Initializing system...');
+        // 1. Ensure the demo tenant exists
+        const tenants = await pool.query('SELECT id FROM tenants WHERE subdomain = $1', ['demo']);
+        let tenantId;
+        if (tenants.rows.length === 0) {
+            const newTenant = await pool.query(`
+                INSERT INTO tenants (name, subdomain, status, subscription_tier)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id
+            `, ['Demo Organization', 'demo', 'active', 'enterprise']);
+            tenantId = newTenant.rows[0].id;
+            console.log(`🏢 [Initialization] Created demo tenant: ${tenantId}`);
+        } else {
+            tenantId = tenants.rows[0].id;
+            console.log(`📡 [Initialization] Using existing demo tenant: ${tenantId}`);
+        }
 
-            client = await pool.connect();
-            await client.query('BEGIN');
-
-            // 1. Ensure a tenant exists
-            let tenantId;
-            const tenants = await client.query('SELECT id FROM tenants LIMIT 1');
-            if (tenants.rows.length > 0) {
-                tenantId = tenants.rows[0].id;
-                console.log(`📡 [Initialization] Using existing tenant: ${tenantId}`);
-            } else {
-                const newTenant = await client.query(`
-                    INSERT INTO tenants (name, subdomain, subscription_tier)
-                    VALUES ($1, $2, $3)
-                    RETURNING id
-                `, ['System Admin Organization', 'admin', 'enterprise']);
-                tenantId = newTenant.rows[0].id;
-                console.log(`🏢 [Initialization] Created new tenant: ${tenantId}`);
-            }
-
-            // 2. Create the super admin user
-            const email = 'admin@admin.com';
-            const password = 'password123'; // Default password for initial setup
-            const passwordHash = await bcrypt.hash(password, 10);
-
-            await client.query(`
+        // 2. Ensure demo@example.com exists
+        const demoUser = await pool.query('SELECT id FROM users WHERE email = $1', ['demo@example.com']);
+        if (demoUser.rows.length === 0) {
+            console.log('🌱 [Initialization] Creating demo@example.com user...');
+            const passwordHash = await bcrypt.hash('password123', 10);
+            await pool.query(`
                 INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, role)
                 VALUES ($1, $2, $3, $4, $5, $6)
-            `, [tenantId, email, passwordHash, 'System', 'Admin', 'super_admin']);
+            `, [tenantId, 'demo@example.com', passwordHash, 'Demo', 'User', 'super_admin']);
+            console.log('✅ [Initialization] demo@example.com created with password123');
+        }
 
-            await client.query('COMMIT');
-            console.log('====================================================');
-            console.log('✅ SYSTEM INITIALIZED SUCCESSFULLY');
-            console.log(`✅ Default Super Admin: ${email}`);
-            console.log(`✅ Default Password: ${password}`);
-            console.log('====================================================');
-        } else {
-            console.log(`✅ [Initialization] System already has ${count} super admin(s).`);
+        // 3. Ensure admin@admin.com exists (for legacy support if needed)
+        const adminUser = await pool.query('SELECT id FROM users WHERE email = $1', ['admin@admin.com']);
+        if (adminUser.rows.length === 0) {
+            console.log('🌱 [Initialization] Creating admin@admin.com user...');
+            const passwordHash = await bcrypt.hash('password123', 10);
+            await pool.query(`
+                INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, role)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            `, [tenantId, 'admin@admin.com', passwordHash, 'System', 'Admin', 'super_admin']);
+            console.log('✅ [Initialization] admin@admin.com created with password123');
         }
+
+        const count = await pool.query('SELECT COUNT(*) FROM users WHERE role = $1', ['super_admin']);
+        console.log(`✅ [Initialization] System has ${count.rows[0].count} super admin(s).`);
     } catch (error) {
-        if (client) {
-            try { await client.query('ROLLBACK'); } catch (e) { }
-        }
         console.error('❌ [Initialization] Database initialization failed:', error);
-        // We don't exit the process because the app might still work if DB is temporarily down
-    } finally {
-        if (client) client.release();
     }
 }
 
