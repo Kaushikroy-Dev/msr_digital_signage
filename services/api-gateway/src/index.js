@@ -89,6 +89,10 @@ app.options('*', (req, res) => {
   }
 });
 
+// Security middleware - AFTER CORS to not interfere with preflight
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // Body parsing - MUST skip for multipart/form-data to allow file uploads
 // Create parsers but apply conditionally
