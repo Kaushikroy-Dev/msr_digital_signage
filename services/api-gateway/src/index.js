@@ -95,6 +95,15 @@ const proxyOptions = {
       proxyReq.setHeader('Authorization', req.headers['authorization']);
     }
 
+    // Forward all headers from the incoming request
+    Object.keys(req.headers).forEach(headerName => {
+      if (headerName.toLowerCase() === 'host') {
+        // Skip host header to allow changeOrigin to work
+        return;
+      }
+      proxyReq.setHeader(headerName, req.headers[headerName]);
+    });
+
     // For multipart/form-data, don't touch anything - let it stream naturally
     if (contentType.includes('multipart/form-data')) {
       console.log('[Gateway] Multipart request detected, streaming through untouched');
@@ -109,6 +118,9 @@ const proxyOptions = {
       proxyReq.setHeader('Content-Type', 'application/json');
       proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
       proxyReq.write(bodyData);
+    } else {
+      // If body wasn't parsed, let http-proxy-middleware handle it
+      // This ensures the raw body stream is forwarded
     }
 
     // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
