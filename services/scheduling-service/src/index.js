@@ -204,6 +204,7 @@ app.post('/playlists', authenticateToken, async (req, res) => {
 
         if (role === 'super_admin') {
             if (!propertyId) {
+                console.log('[Create Playlist] Error: super_admin missing propertyId');
                 return res.status(400).json({ error: 'Property ID is required' });
             }
         } else if (role === 'property_admin') {
