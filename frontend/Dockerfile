@@ -11,9 +11,12 @@ RUN npm install
 # Copy rest of the app
 COPY . .
 
+# Build the application during image build (not at runtime)
+RUN npm run build
+
 # Expose port
 EXPOSE 3000
 
-# RUNTIME BUILD: Force build and serve at the same time to capture Railway Variables
-CMD npm run build && serve -s dist -l $PORT
+# Serve the built application
+CMD serve -s dist -l $PORT
 
