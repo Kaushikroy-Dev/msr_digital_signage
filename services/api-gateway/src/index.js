@@ -19,27 +19,54 @@ const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : ['http://localhost:5173', 'http://localhost:3001', 'http://localhost:4173', 'http://localhost:3000'];
 
-// Always allow the current host if it's a railway domain
+// Helper function to check if origin is allowed
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  
+  const isLocalhost = origin.startsWith('http://localhost') ||
+    origin.startsWith('http://127.0.0.1') ||
+    origin.startsWith('http://192.168.');
+  
+  const isRailway = origin.endsWith('.railway.app') || origin.endsWith('up.railway.app');
+  
+  return corsOrigins.indexOf(origin) !== -1 || isRailway || isLocalhost;
+}
+
+// Enhanced CORS configuration with explicit preflight handling
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow if origin is in corsOrigins or if it's a railway domain or any localhost in dev
-    const isLocalhost = origin && (
-      origin.startsWith('http://localhost') ||
-      origin.startsWith('http://127.0.0.1') ||
-      origin.startsWith('http://192.168.')
-    );
-
-    const isRailway = origin && (origin.endsWith('.railway.app') || origin.endsWith('up.railway.app'));
-
-    if (!origin || corsOrigins.indexOf(origin) !== -1 || isRailway || isLocalhost) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
       console.warn(`[CORS] Blocked origin: ${origin}`);
-      callback(null, true);
+      callback(null, true); // Still allow for now, but log warning
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
 }));
+
+// Explicit OPTIONS handler for all /api routes (preflight requests)
+// This MUST be before the proxy middleware to handle preflight correctly
+app.options('/api/*', (req, res) => {
+  const origin = req.headers.origin;
+  
+  if (isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+    console.log(`[CORS] Preflight request handled for origin: ${origin}`);
+    res.status(200).end();
+  } else {
+    console.warn(`[CORS] Preflight request blocked for origin: ${origin}`);
+    res.status(403).end();
+  }
+});
 
 
 // Body parsing - MUST skip for multipart/form-data to allow file uploads
@@ -187,8 +214,14 @@ if (deviceId && commandType) {
   },
 onProxyRes: (proxyRes, req, res) => {
   // Ensure CORS headers are present in response even if service doesn't send them
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  const origin = req.headers.origin;
+  
+  if (isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
 },
   timeout: 30000 // 30 second timeout
 };
