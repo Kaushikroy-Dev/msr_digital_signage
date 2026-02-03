@@ -33,7 +33,8 @@ function isOriginAllowed(origin) {
 }
 
 // Enhanced CORS configuration with explicit preflight handling
-app.use(cors({
+// CRITICAL: This must be configured to handle preflight correctly
+const corsMiddleware = cors({
   origin: function (origin, callback) {
     if (isOriginAllowed(origin)) {
       callback(null, true);
@@ -46,24 +47,44 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
-}));
+  optionsSuccessStatus: 200, // Some legacy browsers choke on 204
+  preflightContinue: false // Don't continue to next middleware after preflight
+});
 
-// Explicit OPTIONS handler for all /api routes (preflight requests)
-// This MUST be before the proxy middleware to handle preflight correctly
-app.options('/api/*', (req, res) => {
+app.use(corsMiddleware);
+
+// CRITICAL: Handle OPTIONS (preflight) requests BEFORE any other middleware
+// This must be the FIRST route handler after CORS middleware
+app.options('*', (req, res) => {
   const origin = req.headers.origin;
+  const requestMethod = req.headers['access-control-request-method'];
+  const requestHeaders = req.headers['access-control-request-headers'];
+  
+  console.log(`[CORS] OPTIONS preflight request received:`, {
+    origin,
+    path: req.path,
+    requestMethod,
+    requestHeaders
+  });
   
   if (isOriginAllowed(origin)) {
+    // Set all required CORS headers
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Headers', requestHeaders || 'Content-Type, Authorization, X-Requested-With');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-    console.log(`[CORS] Preflight request handled for origin: ${origin}`);
+    
+    console.log(`[CORS] Preflight request ALLOWED for origin: ${origin}`);
+    console.log(`[CORS] Response headers set:`, {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+      'Access-Control-Allow-Headers': requestHeaders || 'Content-Type, Authorization, X-Requested-With'
+    });
+    
     res.status(200).end();
   } else {
-    console.warn(`[CORS] Preflight request blocked for origin: ${origin}`);
+    console.warn(`[CORS] Preflight request BLOCKED for origin: ${origin}`);
     res.status(403).end();
   }
 });
