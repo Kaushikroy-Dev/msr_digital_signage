@@ -29,11 +29,13 @@ app.use(cors({
       origin.startsWith('http://192.168.')
     );
 
-    if (!origin || corsOrigins.indexOf(origin) !== -1 || origin.endsWith('.railway.app') || isLocalhost) {
+    const isRailway = origin && (origin.endsWith('.railway.app') || origin.endsWith('up.railway.app'));
+
+    if (!origin || corsOrigins.indexOf(origin) !== -1 || isRailway || isLocalhost) {
       callback(null, true);
     } else {
       console.warn(`[CORS] Blocked origin: ${origin}`);
-      callback(null, true); // In development, let's be permissive to unblock the user
+      callback(null, true);
     }
   },
   credentials: true
