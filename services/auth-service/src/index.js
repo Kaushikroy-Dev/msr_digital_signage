@@ -618,6 +618,25 @@ app.get('/health', (req, res) => {
     res.json({ status: 'healthy', service: 'auth-service' });
 });
 
+// Diagnostic endpoint
+app.get('/debug/stats', async (req, res) => {
+    try {
+        const users = await pool.query('SELECT COUNT(*) as count FROM users');
+        const tenants = await pool.query('SELECT COUNT(*) as count FROM tenants');
+        const superAdmins = await pool.query("SELECT COUNT(*) as count FROM users WHERE role = 'super_admin'");
+        const demoUser = await pool.query("SELECT email, role FROM users WHERE email = 'demo@example.com'");
+
+        res.json({
+            users: users.rows[0].count,
+            tenants: tenants.rows[0].count,
+            superAdmins: superAdmins.rows[0].count,
+            demoUser: demoUser.rows.length > 0 ? demoUser.rows[0] : 'not found'
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 const PORT = process.env.PORT || process.env.AUTH_SERVICE_PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Auth Service running on port ${PORT}`);
