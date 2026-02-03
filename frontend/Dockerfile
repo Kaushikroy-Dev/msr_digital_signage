@@ -5,7 +5,7 @@ WORKDIR /app
 # Copy package files first
 COPY package*.json ./
 
-# Install dependencies (including serve for production)
+# Install all dependencies (serve is in dependencies, not devDependencies)
 RUN npm install
 
 # Copy rest of the app
@@ -17,6 +17,6 @@ RUN npm run build
 # Expose port
 EXPOSE 3000
 
-# Serve the built application
-CMD serve -s dist -l $PORT
+# Serve the built application using npx to ensure serve is found in node_modules/.bin
+CMD npx serve -s dist -l $PORT
 
