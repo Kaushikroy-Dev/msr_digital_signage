@@ -527,21 +527,35 @@ export default function Playlists() {
                                 <button
                                     className="btn btn-primary"
                                     onClick={() => {
+                                        console.log('[Create Playlist] Button clicked:', {
+                                            newPlaylistName,
+                                            selectedPropertyId,
+                                            selectedZoneId,
+                                            role: user?.role
+                                        });
+                                        
                                         if (!newPlaylistName.trim()) {
                                             alert('Please enter a playlist name');
                                             return;
                                         }
                                         
-                                        // Validate required fields based on role
-                                        if (user?.role === 'super_admin' && !selectedPropertyId) {
-                                            alert('Please select a property');
-                                            return;
+                                        // Validate required fields based on role BEFORE calling mutation
+                                        if (user?.role === 'super_admin') {
+                                            if (!selectedPropertyId || selectedPropertyId === '') {
+                                                alert('Please select a property before creating the playlist');
+                                                console.error('[Create Playlist] Validation failed: propertyId is', selectedPropertyId);
+                                                return;
+                                            }
                                         }
-                                        if (user?.role === 'property_admin' && !selectedZoneId) {
-                                            alert('Please select a zone');
-                                            return;
+                                        if (user?.role === 'property_admin') {
+                                            if (!selectedZoneId || selectedZoneId === '') {
+                                                alert('Please select a zone before creating the playlist');
+                                                console.error('[Create Playlist] Validation failed: zoneId is', selectedZoneId);
+                                                return;
+                                            }
                                         }
                                         
+                                        console.log('[Create Playlist] Validation passed, calling mutation');
                                         createMutation.mutate({
                                             name: newPlaylistName,
                                             transitionEffect: localPlaylistData.transitionEffect,
