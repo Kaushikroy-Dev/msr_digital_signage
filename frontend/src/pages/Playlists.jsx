@@ -4,6 +4,7 @@ import { Plus, Play, Trash2, GripVertical, Image, Video, Eye, Monitor, X, Edit2,
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import PlaylistPreview from '../components/PlaylistPreview';
+import PropertyZoneSelector from '../components/PropertyZoneSelector';
 import './Playlists.css';
 
 export default function Playlists() {
@@ -15,6 +16,10 @@ export default function Playlists() {
     const [contentTab, setContentTab] = useState('media');
     const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
     const [assigningPlaylist, setAssigningPlaylist] = useState(null);
+    const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+    const [newPlaylistName, setNewPlaylistName] = useState('');
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
+    const [selectedZoneId, setSelectedZoneId] = useState('');
 
     // Editor States (local feedback before mutation)
     const [localPlaylistData, setLocalPlaylistData] = useState({
@@ -84,12 +89,38 @@ export default function Playlists() {
     // Mutations
     const createMutation = useMutation({
         mutationFn: async (data) => {
-            const response = await api.post('/schedules/playlists', { ...data, tenantId: user.tenantId });
+            const payload = { ...data, tenantId: user.tenantId };
+            
+            // Add propertyId and zoneId based on user role
+            if (user.role === 'super_admin') {
+                if (!selectedPropertyId) {
+                    throw new Error('Please select a property');
+                }
+                payload.propertyId = selectedPropertyId;
+                if (selectedZoneId) {
+                    payload.zoneId = selectedZoneId;
+                }
+            } else if (user.role === 'property_admin') {
+                if (!selectedZoneId) {
+                    throw new Error('Please select a zone');
+                }
+                payload.zoneId = selectedZoneId;
+            }
+            // For zone_admin and content_editor, backend will auto-assign
+            
+            const response = await api.post('/schedules/playlists', payload);
             return response.data;
         },
         onSuccess: (data) => {
             queryClient.invalidateQueries(['playlists']);
             setSelectedPlaylist(data);
+            setIsCreatingPlaylist(false);
+            setNewPlaylistName('');
+            setSelectedPropertyId('');
+            setSelectedZoneId('');
+        },
+        onError: (error) => {
+            alert(error.message || 'Failed to create playlist');
         }
     });
 
@@ -412,6 +443,94 @@ export default function Playlists() {
                     </div>
                 )}
                 {previewPlaylist && <PlaylistPreview playlistId={previewPlaylist.id} onClose={() => setPreviewPlaylist(null)} />}
+                
+                {/* Create Playlist Modal */}
+                {isCreatingPlaylist && (
+                    <div className="modal-overlay" onClick={() => setIsCreatingPlaylist(false)}>
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>Create New Playlist</h2>
+                                <button className="modal-close" onClick={() => setIsCreatingPlaylist(false)}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="modal-body">
+                                <div className="form-group">
+                                    <label>Playlist Name *</label>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        value={newPlaylistName}
+                                        onChange={(e) => setNewPlaylistName(e.target.value)}
+                                        placeholder="Enter playlist name"
+                                        autoFocus
+                                    />
+                                </div>
+                                
+                                {(user?.role === 'super_admin' || user?.role === 'property_admin') && (
+                                    <div className="form-group">
+                                        <PropertyZoneSelector
+                                            selectedPropertyId={selectedPropertyId}
+                                            selectedZoneId={selectedZoneId}
+                                            onPropertyChange={setSelectedPropertyId}
+                                            onZoneChange={setSelectedZoneId}
+                                            required={user?.role === 'super_admin'}
+                                            showZone={user?.role === 'property_admin' || user?.role === 'super_admin'}
+                                        />
+                                    </div>
+                                )}
+                                
+                                <div className="form-group">
+                                    <label>Transition Effect</label>
+                                    <select
+                                        className="input"
+                                        value={localPlaylistData.transitionEffect}
+                                        onChange={(e) => setLocalPlaylistData({ ...localPlaylistData, transitionEffect: e.target.value })}
+                                    >
+                                        <option value="fade">Fade</option>
+                                        <option value="slide">Slide</option>
+                                        <option value="none">None</option>
+                                    </select>
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label>Transition Duration (ms)</label>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={localPlaylistData.transitionDuration}
+                                        onChange={(e) => setLocalPlaylistData({ ...localPlaylistData, transitionDuration: parseInt(e.target.value) || 1000 })}
+                                        min="0"
+                                        max="5000"
+                                        step="100"
+                                    />
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button className="btn btn-secondary" onClick={() => setIsCreatingPlaylist(false)}>
+                                    Cancel
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={() => {
+                                        if (!newPlaylistName.trim()) {
+                                            alert('Please enter a playlist name');
+                                            return;
+                                        }
+                                        createMutation.mutate({
+                                            name: newPlaylistName,
+                                            transitionEffect: localPlaylistData.transitionEffect,
+                                            transitionDuration: localPlaylistData.transitionDuration
+                                        });
+                                    }}
+                                    disabled={createMutation.isPending}
+                                >
+                                    {createMutation.isPending ? 'Creating...' : 'Create Playlist'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -423,10 +542,7 @@ export default function Playlists() {
                     <h1 style={{ color: 'var(--text-primary)', background: 'none', WebkitTextFillColor: 'initial' }}>Playlists</h1>
                     <p style={{ color: 'var(--text-secondary)' }}>{playlists?.length || 0} active playlists • Manage sequential playback</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => {
-                    const name = prompt('New Playlist Name:');
-                    if (name) createMutation.mutate({ name, transitionEffect: 'fade', transitionDuration: 1000 });
-                }}>
+                <button className="btn btn-primary" onClick={() => setIsCreatingPlaylist(true)}>
                     <Plus size={20} /> Create Playlist
                 </button>
             </div>
