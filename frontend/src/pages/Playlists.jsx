@@ -91,10 +91,19 @@ export default function Playlists() {
         mutationFn: async (data) => {
             const payload = { ...data, tenantId: user.tenantId };
             
+            console.log('[Create Playlist] Mutation called with:', {
+                data,
+                selectedPropertyId,
+                selectedZoneId,
+                role: user.role
+            });
+            
             // Add propertyId and zoneId based on user role
             if (user.role === 'super_admin') {
                 if (!selectedPropertyId) {
-                    throw new Error('Please select a property');
+                    const error = new Error('Please select a property');
+                    console.error('[Create Playlist] Validation failed:', error.message);
+                    throw error;
                 }
                 payload.propertyId = selectedPropertyId;
                 if (selectedZoneId) {
@@ -102,12 +111,15 @@ export default function Playlists() {
                 }
             } else if (user.role === 'property_admin') {
                 if (!selectedZoneId) {
-                    throw new Error('Please select a zone');
+                    const error = new Error('Please select a zone');
+                    console.error('[Create Playlist] Validation failed:', error.message);
+                    throw error;
                 }
                 payload.zoneId = selectedZoneId;
             }
             // For zone_admin and content_editor, backend will auto-assign
             
+            console.log('[Create Playlist] Sending payload:', payload);
             const response = await api.post('/schedules/playlists', payload);
             return response.data;
         },
@@ -120,7 +132,9 @@ export default function Playlists() {
             setSelectedZoneId('');
         },
         onError: (error) => {
-            alert(error.message || 'Failed to create playlist');
+            console.error('[Create Playlist] Error:', error);
+            const errorMessage = error.response?.data?.error || error.message || 'Failed to create playlist';
+            alert(errorMessage);
         }
     });
 
@@ -517,6 +531,17 @@ export default function Playlists() {
                                             alert('Please enter a playlist name');
                                             return;
                                         }
+                                        
+                                        // Validate required fields based on role
+                                        if (user?.role === 'super_admin' && !selectedPropertyId) {
+                                            alert('Please select a property');
+                                            return;
+                                        }
+                                        if (user?.role === 'property_admin' && !selectedZoneId) {
+                                            alert('Please select a zone');
+                                            return;
+                                        }
+                                        
                                         createMutation.mutate({
                                             name: newPlaylistName,
                                             transitionEffect: localPlaylistData.transitionEffect,
