@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Play, Trash2, GripVertical, Image, Video, Eye, Monitor, X, Edit2, Layout, Share2, Search, Settings, ChevronRight } from 'lucide-react';
-import api from '../lib/api';
+import api, { API_BASE_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import PlaylistPreview from '../components/PlaylistPreview';
 import PropertyZoneSelector from '../components/PropertyZoneSelector';
@@ -357,7 +357,7 @@ export default function Playlists() {
                                         <span className="row-index">{idx + 1}</span>
                                         {item.thumbnail_url ? (
                                             <img
-                                                src={`${import.meta.env.VITE_API_URL}${item.thumbnail_url}`}
+                                                src={`${API_BASE_URL}${item.thumbnail_url}`}
                                                 className="row-thumb"
                                                 alt=""
                                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
@@ -437,8 +437,8 @@ export default function Playlists() {
                         {filteredPlaylists?.map((playlist) => (
                             <div key={playlist.id} className="playlist-card" onClick={() => setSelectedPlaylist(playlist)}>
                                 <div className="card-thumbnail-container collage-2">
-                                    <img src={playlist.thumbnails?.[0] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[0]}` : `https://picsum.photos/seed/${playlist.id}1/400/300`} className="thumb-img" alt="" />
-                                    <img src={playlist.thumbnails?.[1] ? `${import.meta.env.VITE_API_URL}${playlist.thumbnails[1]}` : `https://picsum.photos/seed/${playlist.id}2/400/300`} className="thumb-img" alt="" />
+                                    <img src={playlist.thumbnails?.[0] ? `${API_BASE_URL}${playlist.thumbnails[0]}` : `https://picsum.photos/seed/${playlist.id}1/400/300`} className="thumb-img" alt="" />
+                                    <img src={playlist.thumbnails?.[1] ? `${API_BASE_URL}${playlist.thumbnails[1]}` : `https://picsum.photos/seed/${playlist.id}2/400/300`} className="thumb-img" alt="" />
                                     <div className="item-count-badge">{playlist.itemCount || 0} items</div>
                                     <div className="card-actions-overlay" onClick={e => e.stopPropagation()}>
                                         <button className="action-btn-sm" onClick={() => setAssigningPlaylist(playlist.id)} title="Assign to Devices"><Monitor size={16} /></button>
@@ -489,7 +489,7 @@ export default function Playlists() {
                                             })}
                                         >
                                             {asset.thumbnailUrl ? (
-                                                <img src={`${import.meta.env.VITE_API_URL}${asset.thumbnailUrl}`} className="asset-thumb-small" alt="" />
+                                                <img src={`${API_BASE_URL}${asset.thumbnailUrl}`} className="asset-thumb-small" alt="" />
                                             ) : (
                                                 <div className="asset-thumb-small" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--background)' }}>
                                                     {asset.fileType === 'video' ? <Video size={32} color="var(--border)" /> : <Image size={32} color="var(--border)" />}

@@ -58,14 +58,24 @@ api.interceptors.response.use(
             if ((status === 401 || status === 403) && !isPreflight) {
                 // Check if this is a real auth failure or just a network/CORS issue
                 const url = error.config?.url || '';
-                const isLocalhostCall = error.config?.baseURL?.includes('localhost:3000');
+                const baseURL = error.config?.baseURL || '';
+                const isLocalhostCall = baseURL.includes('localhost:3000') || baseURL.includes('127.0.0.1:3000');
                 
                 // Don't logout if it's a localhost call (likely old cached build)
                 if (isLocalhostCall) {
-                    console.warn(`[API] Request to localhost detected. This may be a cached build issue. URL: ${url}`);
+                    console.warn(`[API] Request to localhost detected. This may be a cached build issue.`);
+                    console.warn(`[API] Request URL: ${url}`);
+                    console.warn(`[API] Base URL: ${baseURL}`);
                     console.warn(`[API] Current API Base URL: ${API_BASE_URL}`);
-                    console.warn(`[API] Please clear browser cache or use Incognito mode.`);
+                    console.warn(`[API] Please clear browser cache (Ctrl+Shift+R) or use Incognito mode.`);
                     // Don't clear auth - this is likely a cache issue
+                    return Promise.reject(error);
+                }
+
+                // Check if this is a CORS preflight failure (no response body)
+                const hasResponseData = error.response?.data;
+                if (!hasResponseData && status === 403) {
+                    console.warn(`[API] CORS or network issue detected (403 without response data). Not logging out.`);
                     return Promise.reject(error);
                 }
 
@@ -74,7 +84,10 @@ api.interceptors.response.use(
                 // Only clear and redirect if we aren't already on the login page
                 if (!window.location.pathname.includes('/login')) {
                     localStorage.removeItem('auth-storage');
-                    window.location.href = '/login?reason=auth_expired';
+                    // Use a small delay to prevent rapid redirects
+                    setTimeout(() => {
+                        window.location.href = '/login?reason=auth_expired';
+                    }, 100);
                 }
             }
         } else if (error.request) {
