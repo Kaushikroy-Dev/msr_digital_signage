@@ -426,8 +426,6 @@ const wss = new WebSocket.Server({
   path: '/ws'
 });
 
-const clients = new Map(); // deviceId -> WebSocket connection
-
 wss.on('connection', (ws, req) => {
   console.log('New WebSocket connection');
 
