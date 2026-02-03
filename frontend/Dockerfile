@@ -25,5 +25,6 @@ EXPOSE 3000
 # -s flag enables SPA mode (serve index.html for all routes)
 # -l flag sets listen port
 # Use PORT environment variable (Railway provides this)
-CMD npx serve -s dist -l ${PORT:-3000}
+# Use shell form to allow variable expansion
+CMD ["sh", "-c", "npx serve -s dist -l ${PORT:-3000}"]
 
