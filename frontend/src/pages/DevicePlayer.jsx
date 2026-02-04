@@ -139,6 +139,15 @@ export default function DevicePlayer() {
         return () => clearInterval(pollInterval);
     }, [pairingCode, deviceId]);
 
+    // Update URL when deviceId changes (from any source: WebSocket, polling, or init)
+    useEffect(() => {
+        if (deviceId && !window.location.pathname.includes(deviceId)) {
+            const newUrl = `/player/${deviceId}`;
+            window.history.pushState({}, '', newUrl);
+            console.log('[Player] URL updated to:', newUrl);
+        }
+    }, [deviceId]);
+
     // Fetch device config (for Android TV app flow)
     const { data: deviceConfig } = useQuery({
         queryKey: ['device-config', playerId, deviceToken],
@@ -167,8 +176,9 @@ export default function DevicePlayer() {
     });
 
     // WebSocket for real-time commands with auto-reconnect
+    // Connect even with playerId (before deviceId is available)
     useEffect(() => {
-        if (!deviceId) return;
+        if (!deviceId && !playerId) return;
 
         let ws = null;
         let reconnectAttempts = 0;
@@ -188,13 +198,44 @@ export default function DevicePlayer() {
                 ws.onopen = () => {
                     console.log('[Player] Connected to Gateway WS');
                     reconnectAttempts = 0; // Reset on successful connection
-                    ws.send(JSON.stringify({ type: 'register', deviceId }));
+                    
+                    // Register with playerId first if deviceId not available
+                    if (playerId && !deviceId) {
+                        ws.send(JSON.stringify({ type: 'register_player', playerId }));
+                        console.log('[Player] Registered with playerId:', playerId);
+                    } else if (deviceId) {
+                        ws.send(JSON.stringify({ type: 'register', deviceId }));
+                        console.log('[Player] Registered with deviceId:', deviceId);
+                    }
                 };
 
                 ws.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
                         console.log('[Player] WS Message received:', data);
+
+                        // Handle device_paired notification
+                        if (data.type === 'device_paired' && data.deviceId) {
+                            console.log('[Player] Device paired notification received:', data.deviceId);
+                            
+                            // Update state
+                            setDeviceId(data.deviceId);
+                            localStorage.setItem('ds_device_id', data.deviceId);
+                            
+                            // Update URL to include deviceId
+                            const newUrl = `/player/${data.deviceId}`;
+                            window.history.pushState({}, '', newUrl);
+                            console.log('[Player] URL updated to:', newUrl);
+                            
+                            // Re-register WebSocket with deviceId
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({ type: 'register', deviceId: data.deviceId }));
+                                console.log('[Player] Re-registered with deviceId:', data.deviceId);
+                            }
+                            
+                            // Content will automatically refetch due to deviceId change
+                            return;
+                        }
 
                         if (data.type === 'command') {
                             console.log(`[Player] Executing command: ${data.command}`);
@@ -302,7 +343,7 @@ export default function DevicePlayer() {
                 ws.close();
             }
         };
-    }, [deviceId, refetch]);
+    }, [deviceId, playerId, refetch]);
 
     // Initialize platform-specific features
     useEffect(() => {

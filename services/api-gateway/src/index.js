@@ -12,6 +12,7 @@ const server = http.createServer(app);
 
 // WebSocket clients map - must be defined before proxyOptions
 const clients = new Map(); // deviceId -> WebSocket connection
+const playerClients = new Map(); // player_id -> WebSocket connection
 
 // Broadcast message to specific device
 function sendToDevice(deviceId, message) {
@@ -30,6 +31,16 @@ function broadcastToAll(message) {
       client.send(JSON.stringify(message));
     }
   });
+}
+
+// Send message to specific player by player_id
+function sendToPlayer(playerId, message) {
+  const client = playerClients.get(playerId);
+  if (client && client.readyState === WebSocket.OPEN) {
+    client.send(JSON.stringify(message));
+    return true;
+  }
+  return false;
 }
 
 // CORS configuration - MUST be FIRST to handle preflight correctly
@@ -444,6 +455,7 @@ wss.on('connection', (ws, req) => {
   console.log('New WebSocket connection');
 
   let deviceId = null;
+  let playerId = null;
 
   ws.on('message', (message) => {
     try {
@@ -455,6 +467,25 @@ wss.on('connection', (ws, req) => {
         clients.set(deviceId, ws);
         console.log(`Device registered: ${deviceId}`);
         ws.send(JSON.stringify({ type: 'registered', deviceId }));
+        
+        // If we also have playerId, link them together
+        if (playerId) {
+          // Update playerClients to point to same connection
+          playerClients.set(playerId, ws);
+        }
+      }
+
+      // Handle player_id registration (for unpaired devices)
+      if (data.type === 'register_player' && data.playerId) {
+        playerId = data.playerId;
+        playerClients.set(playerId, ws);
+        console.log(`Player registered: ${playerId}`);
+        ws.send(JSON.stringify({ type: 'registered_player', playerId }));
+        
+        // If we also have deviceId, link them together
+        if (deviceId) {
+          clients.set(deviceId, ws);
+        }
       }
 
       // Handle heartbeat
@@ -464,7 +495,7 @@ wss.on('connection', (ws, req) => {
 
       // Handle proof of play
       if (data.type === 'proof_of_play') {
-        console.log(`Proof of play received from ${deviceId}`);
+        console.log(`Proof of play received from ${deviceId || playerId}`);
         // Forward to device service for processing
       }
 
@@ -478,6 +509,10 @@ wss.on('connection', (ws, req) => {
       clients.delete(deviceId);
       console.log(`Device disconnected: ${deviceId}`);
     }
+    if (playerId) {
+      playerClients.delete(playerId);
+      console.log(`Player disconnected: ${playerId}`);
+    }
   });
 
   ws.on('error', (error) => {
@@ -487,7 +522,41 @@ wss.on('connection', (ws, req) => {
 
 // Export broadcast functions for use by other services (already defined above)
 app.locals.sendToDevice = sendToDevice;
+app.locals.sendToPlayer = sendToPlayer;
 app.locals.broadcastToAll = broadcastToAll;
+
+// Internal endpoint for device-service to send WebSocket notifications
+// Protected by internal service token or Railway internal network
+app.post('/api/internal/notify-player', (req, res) => {
+  try {
+    const { playerId, deviceId, message } = req.body;
+    
+    if (!playerId) {
+      return res.status(400).json({ error: 'playerId is required' });
+    }
+    
+    const notification = {
+      type: 'device_paired',
+      deviceId: deviceId || null,
+      playerId: playerId,
+      message: message || 'Device paired successfully',
+      timestamp: Date.now()
+    };
+    
+    const sent = sendToPlayer(playerId, notification);
+    
+    if (sent) {
+      console.log(`[Gateway] Notification sent to player ${playerId} for device ${deviceId}`);
+    } else {
+      console.log(`[Gateway] Player ${playerId} not connected, notification not sent`);
+    }
+    
+    res.json({ success: sent, playerId, deviceId });
+  } catch (error) {
+    console.error('[Gateway] Error in notify-player endpoint:', error);
+    res.status(500).json({ error: 'Failed to send notification', details: error.message });
+  }
+});
 
 // 404 handler
 app.use((req, res) => {

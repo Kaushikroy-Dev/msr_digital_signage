@@ -871,6 +871,33 @@ app.post('/pairing/claim', authenticateToken, async (req, res) => {
 
         console.log('[Pairing Claim] Device created:', { deviceId, playerId: finalPlayerId });
 
+        // Send WebSocket notification if player_id exists
+        if (playerIdFromCode) {
+            // Use setImmediate to send notification asynchronously without blocking response
+            setImmediate(async () => {
+                try {
+                    // Get API Gateway URL from environment or use default
+                    const apiGatewayUrl = process.env.API_GATEWAY_URL || 
+                                         process.env.RAILWAY_SERVICE_API_GATEWAY_URL || 
+                                         'http://api-gateway:3000';
+                    
+                    // Send notification via internal endpoint
+                    const axios = require('axios');
+                    await axios.post(`${apiGatewayUrl}/api/internal/notify-player`, {
+                        playerId: playerIdFromCode,
+                        deviceId: deviceId,
+                        message: 'Device paired successfully'
+                    }, {
+                        timeout: 2000 // Short timeout, don't block response
+                    });
+                    console.log(`[Pairing Claim] WebSocket notification sent to player ${playerIdFromCode}`);
+                } catch (notifyError) {
+                    // Log but don't fail the pairing if notification fails
+                    console.log('[Pairing Claim] WebSocket notification failed (non-critical):', notifyError.message);
+                }
+            });
+        }
+
         res.json({
             deviceId: deviceId,
             playerId: finalPlayerId,
