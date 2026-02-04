@@ -645,12 +645,12 @@ app.get('/assets', async (req, res) => {
 
         // For public access (player routes), tenantId must be provided in query
         // For authenticated access, use token's tenantId or query param
-        // For public access (player routes), tenantId must be provided in query
-        // For authenticated access, use token's tenantId or query param
         const targetTenantId = tenantId || (user ? user.tenantId : null);
 
         if (!targetTenantId) {
-            return res.status(400).json({ error: 'tenantId is required for public access' });
+            // Return empty array instead of 400 for better UX - frontend will handle gracefully
+            console.warn('[Assets] tenantId missing for public access, returning empty array');
+            return res.json({ assets: [], total: 0 });
         }
 
         // If no user (public access), return all active assets for the tenant without filtering

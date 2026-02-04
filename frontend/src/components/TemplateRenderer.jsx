@@ -38,10 +38,16 @@ export default function TemplateRenderer({
     // Load background image if exists (preload critical asset)
     useEffect(() => {
         if (template.background_image_id) {
+            // Skip if tenantId is missing (for public routes, tenantId is required)
+            if (!tenantId) {
+                console.warn('[TemplateRenderer] Skipping background image load - tenantId missing');
+                return;
+            }
+            
             // Preload background image (critical asset)
             // Use tenantId for public access (player routes) or token's tenantId for admin
             api.get('/content/assets', {
-                params: { tenantId: tenantId || null }
+                params: { tenantId: tenantId }
             })
                 .then(response => {
                     const assets = response.data.assets || [];
@@ -81,10 +87,16 @@ export default function TemplateRenderer({
 
         if (mediaZoneIds.length === 0) return;
 
+        // Skip if tenantId is missing (for public routes, tenantId is required)
+        if (!tenantId) {
+            console.warn('[TemplateRenderer] Skipping media assets load - tenantId missing');
+            return;
+        }
+
         // Fetch all assets and filter by IDs
         // Use tenantId for public access (player routes) or token's tenantId for admin
         api.get('/content/assets', {
-            params: { tenantId: tenantId || null }
+            params: { tenantId: tenantId }
         })
             .then(response => {
                 const assets = response.data.assets || [];
