@@ -1072,11 +1072,17 @@ app.get('/player/:deviceId/content', async (req, res) => {
         const schedule = scheduleResult.rows[0];
 
         // Get tenant_id from device for public access
-        const deviceResult = await pool.query(
-            'SELECT tenant_id FROM devices WHERE id = $1',
-            [deviceId]
-        );
-        const tenantId = deviceResult.rows[0]?.tenant_id || null;
+        let tenantId = null;
+        try {
+            const deviceResult = await pool.query(
+                'SELECT tenant_id FROM devices WHERE id = $1',
+                [deviceId]
+            );
+            tenantId = deviceResult.rows[0]?.tenant_id || null;
+        } catch (deviceError) {
+            console.error('[Player] Error fetching device tenant_id:', deviceError);
+            // Continue without tenantId - will use null
+        }
 
         // Get playlist items with media and template details
         const itemsResult = await pool.query(
@@ -1118,7 +1124,7 @@ app.get('/player/:deviceId/content', async (req, res) => {
                 name: item.original_name,
                 file_type: item.file_type,
                 url: item.url ? `/uploads/${item.url}` : null,
-                thumbnail_url: item.thumbnail_url ? `/uploads/thumbnails/${path.basename(item.thumbnail_url)}` : null,
+                thumbnail_url: item.thumbnail_url ? `/uploads/thumbnails/${path.basename(item.thumbnail_url || '')}` : null,
                 width: item.width,
                 height: item.height,
                 // Template fields (when content_type = 'template')
@@ -1127,7 +1133,7 @@ app.get('/player/:deviceId/content', async (req, res) => {
                     name: item.template_name,
                     width: item.template_width,
                     height: item.template_height,
-                    zones: item.template_zones,
+                    zones: item.template_zones ? (typeof item.template_zones === 'string' ? JSON.parse(item.template_zones) : item.template_zones) : [],
                     background_color: item.background_color,
                     background_image_id: item.background_image_id
                 } : null,
@@ -1137,7 +1143,12 @@ app.get('/player/:deviceId/content', async (req, res) => {
         });
     } catch (error) {
         console.error('Get player content error:', error);
-        res.status(500).json({ error: 'Failed to fetch player content' });
+        console.error('Error stack:', error.stack);
+        console.error('Device ID:', req.params.deviceId);
+        res.status(500).json({ 
+            error: 'Failed to fetch player content',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
