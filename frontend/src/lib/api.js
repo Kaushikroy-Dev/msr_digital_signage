@@ -130,6 +130,9 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        // Check if we're on a player route - don't logout/redirect for player pages (public routes)
+        const isPlayerRoute = window.location.pathname.startsWith('/player');
+        
         // Only trigger logout if we got an actual response with 401/403 status
         // AND it's not a preflight (OPTIONS) error
         // AND it's not a network error (no response received)
@@ -139,6 +142,14 @@ api.interceptors.response.use(
 
             // Only clear auth on actual 401/403 responses (not network errors)
             if ((status === 401 || status === 403) && !isPreflight) {
+                // Don't logout/redirect if we're on a player route (public route)
+                if (isPlayerRoute) {
+                    console.warn(`[API] Auth error on player route (${status}). Player routes are public - ignoring auth error.`);
+                    console.warn(`[API] Request URL: ${error.config?.url}`);
+                    console.warn(`[API] This is expected for public player endpoints.`);
+                    return Promise.reject(error);
+                }
+                
                 // Check if this is a real auth failure or just a network/CORS issue
                 const url = error.config?.url || '';
                 const baseURL = error.config?.baseURL || '';
