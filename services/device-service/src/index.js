@@ -1143,6 +1143,42 @@ async function startServer() {
         process.exit(1);
     });
 
+    // Temporary migration endpoint (remove after running once)
+    app.post('/admin/run-migrations', async (req, res) => {
+        try {
+            console.log('[Migration] Starting database migrations...');
+            
+            // Migration 1: Add player_id support to devices table
+            await pool.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS player_id VARCHAR(255);`);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_devices_player_id ON devices(player_id);`);
+            await pool.query(`
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'devices_player_id_key'
+                    ) THEN
+                        ALTER TABLE devices ADD CONSTRAINT devices_player_id_key UNIQUE (player_id);
+                    END IF;
+                END $$;
+            `);
+            await pool.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_token VARCHAR(255);`);
+            await pool.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS token_expiry TIMESTAMP WITH TIME ZONE;`);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_devices_device_token ON devices(device_token);`);
+            await pool.query(`UPDATE devices SET player_id = id::text WHERE player_id IS NULL;`);
+            console.log('[Migration] ✓ Migration 1 completed: add_player_id_support');
+            
+            // Migration 2: Enhance pairing_codes table
+            await pool.query(`ALTER TABLE pairing_codes ADD COLUMN IF NOT EXISTS player_id VARCHAR(255);`);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_pairing_codes_player_id ON pairing_codes(player_id);`);
+            console.log('[Migration] ✓ Migration 2 completed: enhance_pairing_codes');
+            
+            res.json({ success: true, message: 'All migrations completed successfully' });
+        } catch (error) {
+            console.error('[Migration] Error:', error);
+            res.status(500).json({ error: 'Migration failed', details: error.message });
+        }
+    });
+
     // Test database connection AFTER server starts
     // This prevents Railway from killing the container during startup
     try {
