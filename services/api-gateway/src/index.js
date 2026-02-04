@@ -10,6 +10,10 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
+// Trust proxy - required for Railway/load balancer environments
+// This allows express-rate-limit to correctly identify client IPs from X-Forwarded-For headers
+app.set('trust proxy', true);
+
 // WebSocket clients map - must be defined before proxyOptions
 const clients = new Map(); // deviceId -> WebSocket connection
 const playerClients = new Map(); // player_id -> WebSocket connection
