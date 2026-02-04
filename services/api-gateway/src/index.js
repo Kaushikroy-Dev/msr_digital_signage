@@ -98,23 +98,13 @@ app.use(corsMiddleware);
 // This must be the FIRST route handler after CORS middleware
 app.options('*', (req, res) => {
   const origin = req.headers.origin;
-  const requestMethod = req.headers['access-control-request-method'];
   const requestHeaders = req.headers['access-control-request-headers'];
 
-  console.log(`[CORS] OPTIONS preflight request received:`, {
-    origin,
-    path: req.path,
-    requestMethod,
-    requestHeaders
-  });
+  // Reduced logging for production performance
+  // console.log(`[CORS] OPTIONS preflight request received:`, { origin, path: req.path });
 
   // Always allow Railway domains and explicitly check origin
   const isAllowed = isOriginAllowed(origin);
-  console.log(`[CORS] Origin check for ${origin}:`, {
-    isAllowed,
-    isRailway: origin && (origin.endsWith('.railway.app') || origin.endsWith('up.railway.app')),
-    inCorsOrigins: origin && corsOrigins.indexOf(origin) !== -1
-  });
 
   if (isAllowed) {
     // CRITICAL: Set Access-Control-Allow-Origin to the EXACT origin (not *)
@@ -126,18 +116,10 @@ app.options('*', (req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
-    console.log(`[CORS] Preflight request ALLOWED for origin: ${origin}`);
-    console.log(`[CORS] Response headers set:`, {
-      'Access-Control-Allow-Origin': allowedOrigin,
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-      'Access-Control-Allow-Headers': requestHeaders || 'Content-Type, Authorization, X-Requested-With'
-    });
-
     // Send response immediately
     return res.status(200).end();
   } else {
     console.error(`[CORS] Preflight request BLOCKED for origin: ${origin}`);
-    console.error(`[CORS] Allowed origins:`, corsOrigins);
     res.status(403).json({ error: 'CORS policy: Origin not allowed' }).end();
   }
 });
@@ -149,8 +131,9 @@ app.use(helmet({
 
 // Body parsing - MUST skip for multipart/form-data to allow file uploads
 // Create parsers but apply conditionally
-const jsonParser = express.json({ limit: '200mb' });
-const urlencodedParser = express.urlencoded({ extended: true, limit: '200mb' });
+// Reduced limits to 50mb to prevent OOM
+const jsonParser = express.json({ limit: '50mb' });
+const urlencodedParser = express.urlencoded({ extended: true, limit: '50mb' });
 
 // Apply body parsing conditionally - skip multipart/form-data
 app.use((req, res, next) => {
@@ -201,7 +184,7 @@ const services = {
 // Proxy configuration
 const proxyOptions = {
   changeOrigin: true,
-  logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+  logLevel: 'error', // Reduced log level
   // Ensure headers are forwarded (http-proxy-middleware does this by default, but be explicit)
   headers: {
     'Connection': 'keep-alive'
@@ -232,7 +215,7 @@ const proxyOptions = {
 
     // For multipart/form-data, don't touch anything - let it stream naturally
     if (contentType.includes('multipart/form-data')) {
-      console.log('[Gateway] Multipart request detected, streaming through untouched');
+      // console.log('[Gateway] Multipart request detected, streaming through untouched');
       return;
     }
 
@@ -269,18 +252,11 @@ const proxyOptions = {
     // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
     const requestPath = req.url || req.path || '';
     if (req.method === 'POST' && requestPath.includes('/commands')) {
-      console.log(`[Gateway] Intercepted potential command. Path: ${requestPath}, Method: ${req.method}`);
-      console.log(`[Gateway] Body:`, JSON.stringify(req.body));
-
       // Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
       // Also handle /devices/devices/:id/commands (legacy path)
       const match = requestPath.match(/\/(?:api\/)?devices(?:\/devices)?\/([^/]+)\/commands/);
       const deviceId = match ? match[1] : null;
       const { commandType } = req.body || {};
-
-      console.log(`[Gateway] Match Result: ${match ? 'Match found' : 'No match'}`);
-      console.log(`[Gateway] Extracted DeviceID: ${deviceId}, CommandType: ${commandType}`);
-      console.log(`[Gateway] Connected devices:`, Array.from(clients.keys()));
 
       if (deviceId && commandType) {
         // Use setTimeout to ensure the command is sent after the response
@@ -290,13 +266,10 @@ const proxyOptions = {
             command: commandType,
             timestamp: Date.now()
           });
-          console.log(`[Gateway] Broadcast status for ${deviceId}: ${sent ? 'SUCCESS' : 'FAILED (Device not connected via WS)'}`);
           if (!sent) {
-            console.log(`[Gateway] Device ${deviceId} is not connected. Available devices:`, Array.from(clients.keys()));
+            // console.log(`[Gateway] Device ${deviceId} is not connected.`);
           }
         }, 100);
-      } else {
-        console.log(`[Gateway] Skipping broadcast: Missing deviceId (${deviceId}) or commandType (${commandType})`);
       }
     }
   },
@@ -331,7 +304,7 @@ const contentProxyOptions = {
 
     // Special handling for multipart
     if (contentType.includes('multipart/form-data')) {
-      console.log('[Gateway] Multipart upload - streaming through');
+      // console.log('[Gateway] Multipart upload - streaming through');
       return;
     }
 
