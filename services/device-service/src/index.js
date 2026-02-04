@@ -1200,6 +1200,22 @@ app.post('/admin/run-migrations', async (req, res) => {
 
 // Async startup function
 async function startServer() {
+    const PORT = process.env.PORT || process.env.DEVICE_SERVICE_PORT || 3005;
+
+    console.log('🚀 Starting Device Service...');
+
+    // Start HTTP server FIRST (before database check)
+    // This allows health checks to pass while DB connects
+    const server = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`✅ Device Service running on port ${PORT}`);
+    }).on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(`❌ Port ${PORT} is already in use`);
+        } else {
+            console.error('❌ Server error:', err);
+        }
+        process.exit(1);
+    });
 
     // Test database connection AFTER server starts
     // This prevents Railway from killing the container during startup
