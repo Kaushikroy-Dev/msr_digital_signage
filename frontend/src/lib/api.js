@@ -104,6 +104,9 @@ api.interceptors.request.use(
 // Request interceptor to add auth token (skip for public device endpoints)
 api.interceptors.request.use(
     (config) => {
+        // Check if we're on a player route (public route)
+        const isPlayerRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/player');
+        
         // Skip auth for public device endpoints (for Android TV app)
         const url = config.url || '';
         const isDevicePublicEndpoint = url.startsWith('/device/');
@@ -111,7 +114,10 @@ api.interceptors.request.use(
         // Also skip auth for player content endpoint (public)
         const isPlayerContentEndpoint = url.includes('/schedules/player/') && url.includes('/content');
         
-        if (isDevicePublicEndpoint || isPlayerContentEndpoint) {
+        // Skip auth for content/assets endpoint when on player route (for template rendering)
+        const isContentAssetsEndpoint = url.includes('/content/assets');
+        
+        if (isDevicePublicEndpoint || isPlayerContentEndpoint || (isPlayerRoute && isContentAssetsEndpoint)) {
             // Public endpoint - no auth required
             return config;
         }

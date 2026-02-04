@@ -607,7 +607,30 @@ app.post('/upload', authenticateToken, upload.single('file'), handleMulterError,
 });
 
 // Get media assets
-app.get('/assets', authenticateToken, async (req, res) => {
+// Get assets endpoint - public for player routes, authenticated for admin portal
+app.get('/assets', async (req, res) => {
+    // Check if auth token is provided - if not, allow public access (for player routes)
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    let user = null;
+    
+    // If token provided, verify it
+    if (token) {
+        try {
+            user = jwt.verify(token, JWT_SECRET);
+            req.user = user;
+            console.log('[Assets] Authenticated request from user:', user.userId);
+        } catch (err) {
+            console.log('[Assets] Token verification failed:', err.message);
+            return res.status(401).json({ error: 'Unauthorized', details: err.message });
+        }
+    } else {
+        console.log('[Assets] Public access - no auth token provided (player route)');
+        // For public access, we'll return assets without user-based filtering
+    }
+    
+    // Continue with the handler logic
     let query = '';
     let params = [];
 
@@ -616,8 +639,55 @@ app.get('/assets', authenticateToken, async (req, res) => {
         // Convert limit and offset to numbers
         const limit = parseInt(limitParam, 10) || 50;
         const offset = parseInt(offsetParam, 10) || 0;
-        const targetTenantId = tenantId || req.user.tenantId;
-        const { role, userId } = req.user;
+        
+        // For public access (player routes), tenantId must be provided in query
+        // For authenticated access, use token's tenantId or query param
+        const targetTenantId = tenantId || (user ? user.tenantId : null);
+        
+        if (!targetTenantId) {
+            return res.status(400).json({ error: 'tenantId is required for public access' });
+        }
+        
+        // If no user (public access), return all active assets for the tenant without filtering
+        if (!user) {
+            query = `
+                SELECT id, file_name, original_name, file_type, mime_type, file_size_bytes,
+                       storage_path, thumbnail_path, width, height, tags, status, created_at,
+                       property_id, zone_id, is_shared, shared_with_properties
+                FROM public.media_assets
+                WHERE tenant_id = $1 AND status = 'active'
+            `;
+            params = [targetTenantId];
+            
+            if (fileType) {
+                query += ` AND file_type = $2`;
+                params.push(fileType);
+            }
+            
+            query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            params.push(limit, offset);
+            
+            const result = await pool.query(query, params);
+            const assets = result.rows.map(asset => ({
+                id: asset.id,
+                file_name: asset.file_name,
+                original_name: asset.original_name,
+                file_type: asset.file_type,
+                mime_type: asset.mime_type,
+                file_size_bytes: asset.file_size_bytes,
+                url: asset.storage_path ? `/uploads/${asset.storage_path}` : null,
+                thumbnail_url: asset.thumbnail_path ? `/uploads/thumbnails/${path.basename(asset.thumbnail_path)}` : null,
+                width: asset.width,
+                height: asset.height,
+                tags: asset.tags,
+                created_at: asset.created_at
+            }));
+            
+            return res.json({ assets, total: assets.length });
+        }
+        
+        // Authenticated access - apply role-based filtering
+        const { role, userId } = user;
 
         // Build base query with property/zone filtering
         // Explicitly use public schema to avoid any search_path issues
