@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api, { API_BASE_URL } from '../lib/api';
 import MediaPlayer from '../components/MediaPlayer';
@@ -13,15 +13,29 @@ import { applyPlatformOptimizations, initOptimizations } from '../utils/platform
 import { initErrorHandling, log } from '../utils/platformLogger';
 import './DevicePlayer.css';
 
+// Detect WebView environment
+const isWebView = () => {
+    const ua = navigator.userAgent;
+    return /wv|WebView/i.test(ua) || window.Android !== undefined;
+};
+
 export default function DevicePlayer() {
     const { deviceId: urlDeviceId } = useParams();
+    const [searchParams] = useSearchParams();
+    
+    // Read player_id from URL query params (for Android TV app)
+    const playerIdFromQuery = searchParams.get('player_id');
+    
     // Only use localStorage deviceId if no URL param and we're not in pairing mode
     const [deviceId, setDeviceId] = useState(urlDeviceId || null);
+    const [playerId, setPlayerId] = useState(playerIdFromQuery || null);
+    const [deviceToken, setDeviceToken] = useState(null);
     const [pairingCode, setPairingCode] = useState(null);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(true);
     const [hasInitialContent, setHasInitialContent] = useState(false);
     const [pairingError, setPairingError] = useState(null);
+    const [initStatus, setInitStatus] = useState(null); // 'UNPAIRED', 'ACTIVE', 'DISABLED'
 
     // Persist deviceId to localStorage when we get it from URL
     useEffect(() => {
@@ -31,10 +45,55 @@ export default function DevicePlayer() {
         }
     }, [urlDeviceId]);
 
-    // Handle Pairing Mode - Always generate code if no deviceId
+    // Initialize device with player_id (for Android TV app)
+    const { data: initData, isLoading: initLoading, error: initError } = useQuery({
+        queryKey: ['device-init', playerId],
+        queryFn: async () => {
+            if (!playerId) return null;
+            console.log('[Player] Initializing device with player_id:', playerId);
+            const response = await api.post('/device/init', { player_id: playerId });
+            return response.data;
+        },
+        enabled: !!playerId && !deviceId, // Only run if we have playerId and no deviceId yet
+        retry: 3,
+        retryDelay: 2000
+    });
+
+    // Handle device initialization result
     useEffect(() => {
-        if (!deviceId && !pairingCode) {
-            // Generate pairing code
+        if (initData) {
+            console.log('[Player] Device init result:', initData);
+            setInitStatus(initData.status);
+            
+            if (initData.pairing_required) {
+                // Device needs pairing
+                setDeviceId(null);
+                setPairingError(initData.message || 'Device not paired');
+            } else if (initData.device_id) {
+                // Device is paired - set deviceId and token
+                setDeviceId(initData.device_id);
+                setPlayerId(initData.player_id || initData.device_id);
+                setDeviceToken(initData.device_token);
+                localStorage.setItem('ds_device_id', initData.device_id);
+                if (initData.device_token) {
+                    localStorage.setItem('ds_device_token', initData.device_token);
+                }
+            }
+        }
+    }, [initData]);
+
+    // Handle init error
+    useEffect(() => {
+        if (initError) {
+            console.error('[Player] Device init error:', initError);
+            setPairingError(initError.response?.data?.error || 'Failed to initialize device');
+        }
+    }, [initError]);
+
+    // Handle Pairing Mode - Always generate code if no deviceId and no playerId flow
+    useEffect(() => {
+        if (!deviceId && !pairingCode && !playerId) {
+            // Generate pairing code (legacy flow for non-Android TV devices)
             const fetchPairingCode = async () => {
                 try {
                     setPairingError(null);
@@ -57,7 +116,7 @@ export default function DevicePlayer() {
             };
             fetchPairingCode();
         }
-    }, [deviceId, pairingCode]);
+    }, [deviceId, pairingCode, playerId]);
 
     // Poll for pairing status
     useEffect(() => {
@@ -79,6 +138,22 @@ export default function DevicePlayer() {
         }
         return () => clearInterval(pollInterval);
     }, [pairingCode, deviceId]);
+
+    // Fetch device config (for Android TV app flow)
+    const { data: deviceConfig } = useQuery({
+        queryKey: ['device-config', playerId, deviceToken],
+        queryFn: async () => {
+            if (!playerId) return null;
+            const headers = deviceToken ? { 'x-device-token': deviceToken } : {};
+            const response = await api.get('/device/config', {
+                params: { player_id: playerId },
+                headers
+            });
+            return response.data;
+        },
+        enabled: !!playerId && !!deviceId && !initData?.pairing_required,
+        refetchInterval: 60000 // Refresh every minute
+    });
 
     // Fetch current content for device
     const { data: playerData, refetch } = useQuery({

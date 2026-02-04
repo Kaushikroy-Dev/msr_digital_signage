@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
@@ -658,7 +660,7 @@ function generatePairingCode() {
 // Generate new pairing code (Called by Player)
 app.post('/pairing/generate', async (req, res) => {
     try {
-        const { platform, deviceInfo } = req.body;
+        const { platform, deviceInfo, player_id } = req.body;
 
         // Validate and normalize platform
         const validPlatforms = ['windows', 'android', 'tizen', 'webos', 'brightsign', 'linux'];
@@ -670,19 +672,27 @@ app.post('/pairing/generate', async (req, res) => {
         const enhancedDeviceInfo = {
             ...(deviceInfo || {}),
             platform: normalizedPlatform,
-            detectedAt: new Date().toISOString()
+            detectedAt: new Date().toISOString(),
+            player_id: player_id || null
         };
 
         const code = generatePairingCode();
 
+        // Insert pairing code with player_id if provided
         const result = await pool.query(
-            `INSERT INTO pairing_codes (code, device_info)
-             VALUES ($1, $2)
-             RETURNING code, expires_at`,
-            [code, JSON.stringify(enhancedDeviceInfo)]
+            `INSERT INTO pairing_codes (code, device_info, player_id)
+             VALUES ($1, $2, $3)
+             RETURNING code, expires_at, player_id`,
+            [code, JSON.stringify(enhancedDeviceInfo), player_id || null]
         );
 
-        res.status(201).json(result.rows[0]);
+        console.log('[Pairing] Generated code:', { code, player_id: player_id || 'none' });
+
+        res.status(201).json({
+            code: result.rows[0].code,
+            expires_at: result.rows[0].expires_at,
+            player_id: result.rows[0].player_id
+        });
     } catch (error) {
         console.error('Generate pairing code error:', error);
         res.status(500).json({ error: 'Failed to generate pairing code' });
@@ -749,25 +759,37 @@ app.post('/pairing/claim', authenticateToken, async (req, res) => {
         const validPlatforms = ['windows', 'android', 'tizen', 'webos', 'brightsign', 'linux'];
         const normalizedPlatform = validPlatforms.includes(platform) ? platform : 'android';
 
-        // 4. Create device
+        // 4. Get player_id from pairing code if available
+        const pairingCodeData = codeResult.rows[0];
+        const playerIdFromCode = pairingCodeData.player_id || null;
+        
+        // 5. Create device with player_id if available
         const deviceCode = `PLAYER-${cleanCode}`;
         const deviceResult = await client.query(
-            `INSERT INTO devices (device_name, device_code, zone_id, platform, status)
-             VALUES ($1, $2, $3, $4, 'online')
-             RETURNING id`,
-            [name, deviceCode, zoneId, normalizedPlatform]
+            `INSERT INTO devices (device_name, device_code, zone_id, platform, status, player_id)
+             VALUES ($1, $2, $3, $4, 'online', $5)
+             RETURNING id, player_id`,
+            [name, deviceCode, zoneId, normalizedPlatform, playerIdFromCode]
         );
 
         const deviceId = deviceResult.rows[0].id;
+        const finalPlayerId = deviceResult.rows[0].player_id || deviceId;
 
-        // 5. Update pairing code
+        // 6. Update pairing code
         await client.query(
             'UPDATE pairing_codes SET assigned_device_id = $1 WHERE code = $2',
             [deviceId, cleanCode]
         );
 
         await client.query('COMMIT');
-        res.json({ deviceId });
+        
+        console.log('[Pairing Claim] Device created:', { deviceId, playerId: finalPlayerId });
+        
+        res.json({ 
+            deviceId: deviceId,
+            playerId: finalPlayerId,
+            message: 'Device paired successfully'
+        });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Claim pairing code error:', error);

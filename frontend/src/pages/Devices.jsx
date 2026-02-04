@@ -397,6 +397,11 @@ export default function Devices() {
                                         <div className="device-title-section">
                                             <h3 className="device-name">{device.device_name}</h3>
                                             <span className="device-code">DSP-{device.id.slice(0, 3)}</span>
+                                            {device.player_id && (
+                                                <span className="player-id" style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '4px', display: 'block' }}>
+                                                    Player ID: {device.player_id}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="quick-actions">
                                             <button
@@ -430,6 +435,34 @@ export default function Devices() {
                                             <span className="detail-label">Platform</span>
                                             <span className="detail-value platform">{device.platform || 'Android'}</span>
                                         </div>
+                                        {device.player_id && (
+                                            <div className="detail-item">
+                                                <span className="detail-label">Player ID</span>
+                                                <span className="detail-value" style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                                                    {device.player_id}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigator.clipboard.writeText(device.player_id);
+                                                            alert('Player ID copied to clipboard!');
+                                                        }}
+                                                        style={{
+                                                            marginLeft: '8px',
+                                                            padding: '2px 6px',
+                                                            fontSize: '10px',
+                                                            background: 'rgba(255,255,255,0.1)',
+                                                            border: '1px solid rgba(255,255,255,0.2)',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            color: 'rgba(255,255,255,0.8)'
+                                                        }}
+                                                        title="Copy Player ID"
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className="detail-item">
                                             <span className="detail-label">Last seen</span>
                                             <span className="detail-value time">

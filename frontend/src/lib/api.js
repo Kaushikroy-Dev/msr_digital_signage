@@ -101,9 +101,19 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token (skip for public device endpoints)
 api.interceptors.request.use(
     (config) => {
+        // Skip auth for public device endpoints (for Android TV app)
+        const url = config.url || '';
+        const isDevicePublicEndpoint = url.startsWith('/device/');
+        
+        if (isDevicePublicEndpoint) {
+            // Public endpoint - no auth required
+            return config;
+        }
+        
+        // For all other endpoints, add auth token if available
         const authStorage = localStorage.getItem('auth-storage');
         if (authStorage) {
             const { token } = JSON.parse(authStorage).state;

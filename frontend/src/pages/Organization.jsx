@@ -143,11 +143,25 @@ export default function Organization() {
             const response = await api.post('/devices/pairing/claim', data);
             return response.data;
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
             queryClient.invalidateQueries(['devices']);
             setIsAddingDevice(null);
             setPairingCode(['', '', '', '', '', '', '', '']);
             setDeviceForm({ name: '', deviceCode: '', platform: 'android', orientation: 'landscape' });
+            
+            // Show player_id if available (for Android TV app)
+            if (data.playerId) {
+                const message = `Device paired successfully!\n\nDevice ID: ${data.deviceId}\nPlayer ID: ${data.playerId}\n\nCopy Player ID for Android TV app configuration.`;
+                alert(message);
+                // Copy player ID to clipboard
+                navigator.clipboard.writeText(data.playerId).then(() => {
+                    console.log('[Organization] Player ID copied to clipboard:', data.playerId);
+                }).catch(err => {
+                    console.error('[Organization] Failed to copy player ID:', err);
+                });
+            } else {
+                alert('Device paired successfully!');
+            }
         },
         onError: (err) => {
             alert(err.response?.data?.error || 'Failed to claim code');

@@ -400,6 +400,13 @@ app.use('/api/devices', createProxyMiddleware({
   }
 }));
 
+// Route device initialization endpoints (for Android TV app)
+app.use('/api/device', createProxyMiddleware({
+  ...proxyOptions,
+  target: services.device,
+  pathRewrite: { '^/api/device': '/device' }
+}));
+
 // Analytics routes
 app.use('/api/analytics/dashboard-stats', createProxyMiddleware({
   ...proxyOptions,
