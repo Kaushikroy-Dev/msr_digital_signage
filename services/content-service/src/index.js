@@ -170,6 +170,9 @@ if (!USE_S3) {
     console.log('Using local file storage at:', UPLOAD_DIR);
 }
 
+// Serve uploaded files statically (essential for local development or when not using S3)
+app.use('/uploads', express.static(UPLOAD_DIR));
+
 // S3 Client configuration (only if credentials provided)
 let s3Client;
 if (USE_S3) {
@@ -612,9 +615,9 @@ app.get('/assets', async (req, res) => {
     // Check if auth token is provided - if not, allow public access (for player routes)
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    
+
     let user = null;
-    
+
     // If token provided, verify it
     if (token) {
         try {
@@ -629,7 +632,7 @@ app.get('/assets', async (req, res) => {
         console.log('[Assets] Public access - no auth token provided (player route)');
         // For public access, we'll return assets without user-based filtering
     }
-    
+
     // Continue with the handler logic
     let query = '';
     let params = [];
@@ -639,17 +642,17 @@ app.get('/assets', async (req, res) => {
         // Convert limit and offset to numbers
         const limit = parseInt(limitParam, 10) || 50;
         const offset = parseInt(offsetParam, 10) || 0;
-        
+
         // For public access (player routes), tenantId must be provided in query
         // For authenticated access, use token's tenantId or query param
         // For public access (player routes), tenantId must be provided in query
         // For authenticated access, use token's tenantId or query param
         const targetTenantId = tenantId || (user ? user.tenantId : null);
-        
+
         if (!targetTenantId) {
             return res.status(400).json({ error: 'tenantId is required for public access' });
         }
-        
+
         // If no user (public access), return all active assets for the tenant without filtering
         if (!user) {
             query = `
@@ -660,15 +663,15 @@ app.get('/assets', async (req, res) => {
                 WHERE tenant_id = $1 AND status = 'active'
             `;
             params = [targetTenantId];
-            
+
             if (fileType) {
                 query += ` AND file_type = $2`;
                 params.push(fileType);
             }
-            
+
             query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limit, offset);
-            
+
             const result = await pool.query(query, params);
             const assets = result.rows.map(asset => ({
                 id: asset.id,
@@ -684,10 +687,10 @@ app.get('/assets', async (req, res) => {
                 tags: asset.tags,
                 created_at: asset.created_at
             }));
-            
+
             return res.json({ assets, total: assets.length });
         }
-        
+
         // Authenticated access - apply role-based filtering
         const { role, userId } = user;
 

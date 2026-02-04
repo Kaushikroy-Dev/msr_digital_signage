@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-    ClockWidget, 
-    WeatherWidget, 
-    QRCodeWidget, 
-    WebViewWidget, 
+import {
+    ClockWidget,
+    WeatherWidget,
+    QRCodeWidget,
+    WebViewWidget,
     TextWidget,
     CountdownWidget,
     RSSWidget,
@@ -16,13 +16,13 @@ import {
 import api from '../lib/api';
 import './TemplateRenderer.css';
 
-export default function TemplateRenderer({ 
-    template, 
-    zones: zonesProp, 
-    mediaAssets: mediaAssetsProp, 
-    duration, 
-    onComplete, 
-    apiUrl, 
+export default function TemplateRenderer({
+    template,
+    zones: zonesProp,
+    mediaAssets: mediaAssetsProp,
+    duration,
+    onComplete,
+    apiUrl,
     variableValues = {},
     tenantId = null // For public access (player routes)
 }) {
@@ -31,8 +31,8 @@ export default function TemplateRenderer({
     const timerRef = useRef(null);
 
     // Parse zones - use zonesProp if provided, otherwise from template
-    const zones = zonesProp || (Array.isArray(template.zones) 
-        ? template.zones 
+    const zones = zonesProp || (Array.isArray(template.zones)
+        ? template.zones
         : (typeof template.zones === 'string' ? JSON.parse(template.zones) : []));
 
     // Load background image if exists (preload critical asset)
@@ -43,21 +43,21 @@ export default function TemplateRenderer({
             api.get('/content/assets', {
                 params: { tenantId: tenantId || null }
             })
-            .then(response => {
-                const assets = response.data.assets || [];
-                const bgAsset = assets.find(a => a.id === template.background_image_id);
-                if (bgAsset && bgAsset.url) {
-                    // Preload image
-                    const img = new Image();
-                    img.src = `${apiUrl}${bgAsset.url}`;
-                    img.onload = () => {
-                        setBackgroundImageUrl(`${apiUrl}${bgAsset.url}`);
-                    };
-                }
-            })
-            .catch(err => {
-                console.error('Failed to load background image:', err);
-            });
+                .then(response => {
+                    const assets = response.data.assets || [];
+                    const bgAsset = assets.find(a => a.id === template.background_image_id);
+                    if (bgAsset && bgAsset.url) {
+                        // Preload image
+                        const img = new Image();
+                        img.src = `${apiUrl}${bgAsset.url}`;
+                        img.onload = () => {
+                            setBackgroundImageUrl(`${apiUrl}${bgAsset.url}`);
+                        };
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load background image:', err);
+                });
         } else {
             setBackgroundImageUrl(null);
         }
@@ -86,20 +86,20 @@ export default function TemplateRenderer({
         api.get('/content/assets', {
             params: { tenantId: tenantId || null }
         })
-        .then(response => {
-            const assets = response.data.assets || [];
-            const assetMap = {};
-            mediaZoneIds.forEach(id => {
-                const asset = assets.find(a => a.id === id);
-                if (asset) {
-                    assetMap[id] = asset;
-                }
+            .then(response => {
+                const assets = response.data.assets || [];
+                const assetMap = {};
+                mediaZoneIds.forEach(id => {
+                    const asset = assets.find(a => a.id === id);
+                    if (asset) {
+                        assetMap[id] = asset;
+                    }
+                });
+                setMediaAssets(assetMap);
+            })
+            .catch(err => {
+                console.error('Failed to load media assets:', err);
             });
-            setMediaAssets(assetMap);
-        })
-        .catch(err => {
-            console.error('Failed to load media assets:', err);
-        });
     }, [zones, mediaAssetsProp, tenantId]);
 
     // Timer for template duration
@@ -170,7 +170,7 @@ export default function TemplateRenderer({
 
             return (
                 <div key={zone.id} className="template-zone template-zone-media" style={zoneStyle}>
-                    {asset.fileType === 'image' ? (
+                    {(asset.fileType === 'image' || asset.file_type === 'image') ? (
                         <img
                             src={mediaUrl}
                             alt={asset.originalName || asset.original_name || 'Media'}
@@ -180,7 +180,7 @@ export default function TemplateRenderer({
                                 objectFit: mediaFit
                             }}
                         />
-                    ) : asset.fileType === 'video' ? (
+                    ) : (asset.fileType === 'video' || asset.file_type === 'video') ? (
                         <video
                             src={mediaUrl}
                             autoPlay={zone.autoPlay !== false && zone.auto_play !== false}
