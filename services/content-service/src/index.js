@@ -642,6 +642,8 @@ app.get('/assets', async (req, res) => {
         
         // For public access (player routes), tenantId must be provided in query
         // For authenticated access, use token's tenantId or query param
+        // For public access (player routes), tenantId must be provided in query
+        // For authenticated access, use token's tenantId or query param
         const targetTenantId = tenantId || (user ? user.tenantId : null);
         
         if (!targetTenantId) {
