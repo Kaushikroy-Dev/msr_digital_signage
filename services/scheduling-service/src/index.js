@@ -1072,6 +1072,7 @@ app.get('/player/:deviceId/content', async (req, res) => {
         const schedule = scheduleResult.rows[0];
 
         // Get tenant_id from device for public access
+        // Also try to get it from the playlist if device query fails
         let tenantId = null;
         try {
             const deviceResult = await pool.query(
@@ -1079,9 +1080,29 @@ app.get('/player/:deviceId/content', async (req, res) => {
                 [deviceId]
             );
             tenantId = deviceResult.rows[0]?.tenant_id || null;
+            
+            // If device doesn't have tenant_id, try to get it from the playlist
+            if (!tenantId && schedule.playlist_id) {
+                const playlistResult = await pool.query(
+                    'SELECT tenant_id FROM playlists WHERE id = $1',
+                    [schedule.playlist_id]
+                );
+                tenantId = playlistResult.rows[0]?.tenant_id || null;
+            }
         } catch (deviceError) {
-            console.error('[Player] Error fetching device tenant_id:', deviceError);
-            // Continue without tenantId - will use null
+            console.error('[Player] Error fetching tenant_id:', deviceError);
+            // Try to get tenant_id from playlist as fallback
+            try {
+                if (schedule.playlist_id) {
+                    const playlistResult = await pool.query(
+                        'SELECT tenant_id FROM playlists WHERE id = $1',
+                        [schedule.playlist_id]
+                    );
+                    tenantId = playlistResult.rows[0]?.tenant_id || null;
+                }
+            } catch (playlistError) {
+                console.error('[Player] Error fetching tenant_id from playlist:', playlistError);
+            }
         }
 
         // Get playlist items with media and template details
