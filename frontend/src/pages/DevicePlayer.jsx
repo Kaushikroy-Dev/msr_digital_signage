@@ -524,6 +524,7 @@ export default function DevicePlayer() {
                     duration={currentItem.duration_seconds}
                     onComplete={handleMediaComplete}
                     apiUrl={API_BASE_URL}
+                    tenantId={playerData?.tenantId} // Pass tenantId for public asset access
                 />
             </div>
         );

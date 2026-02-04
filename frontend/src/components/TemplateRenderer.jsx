@@ -23,7 +23,8 @@ export default function TemplateRenderer({
     duration, 
     onComplete, 
     apiUrl, 
-    variableValues = {} 
+    variableValues = {},
+    tenantId = null // For public access (player routes)
 }) {
     const [mediaAssets, setMediaAssets] = useState(mediaAssetsProp || {}); // Map of mediaAssetId -> asset data
     const [backgroundImageUrl, setBackgroundImageUrl] = useState(null);
@@ -38,8 +39,9 @@ export default function TemplateRenderer({
     useEffect(() => {
         if (template.background_image_id) {
             // Preload background image (critical asset)
+            // Use tenantId for public access (player routes) or token's tenantId for admin
             api.get('/content/assets', {
-                params: { tenantId: null } // Will use token's tenantId
+                params: { tenantId: tenantId || null }
             })
             .then(response => {
                 const assets = response.data.assets || [];
@@ -59,7 +61,7 @@ export default function TemplateRenderer({
         } else {
             setBackgroundImageUrl(null);
         }
-    }, [template.background_image_id, apiUrl]);
+    }, [template.background_image_id, apiUrl, tenantId]);
 
     // Load media assets for media zones (only if not provided as prop)
     useEffect(() => {
@@ -80,8 +82,9 @@ export default function TemplateRenderer({
         if (mediaZoneIds.length === 0) return;
 
         // Fetch all assets and filter by IDs
+        // Use tenantId for public access (player routes) or token's tenantId for admin
         api.get('/content/assets', {
-            params: { tenantId: null }
+            params: { tenantId: tenantId || null }
         })
         .then(response => {
             const assets = response.data.assets || [];
@@ -97,7 +100,7 @@ export default function TemplateRenderer({
         .catch(err => {
             console.error('Failed to load media assets:', err);
         });
-    }, [zones, mediaAssetsProp]);
+    }, [zones, mediaAssetsProp, tenantId]);
 
     // Timer for template duration
     useEffect(() => {

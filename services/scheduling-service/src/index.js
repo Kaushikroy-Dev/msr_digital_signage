@@ -1071,6 +1071,13 @@ app.get('/player/:deviceId/content', async (req, res) => {
 
         const schedule = scheduleResult.rows[0];
 
+        // Get tenant_id from device for public access
+        const deviceResult = await pool.query(
+            'SELECT tenant_id FROM devices WHERE id = $1',
+            [deviceId]
+        );
+        const tenantId = deviceResult.rows[0]?.tenant_id || null;
+
         // Get playlist items with media and template details
         const itemsResult = await pool.query(
             `SELECT 
@@ -1096,6 +1103,7 @@ app.get('/player/:deviceId/content', async (req, res) => {
         );
 
         res.json({
+            tenantId: tenantId, // Include tenantId for public asset access
             playlist: {
                 id: schedule.playlist_id,
                 name: schedule.playlist_name,
