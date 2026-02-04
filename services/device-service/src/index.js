@@ -748,20 +748,36 @@ app.post('/pairing/generate', async (req, res) => {
 
         const code = generatePairingCode();
 
-        // Insert pairing code with player_id if provided
-        const result = await pool.query(
-            `INSERT INTO pairing_codes (code, device_info, player_id)
-             VALUES ($1, $2, $3)
-             RETURNING code, expires_at, player_id`,
-            [code, JSON.stringify(enhancedDeviceInfo), player_id || null]
-        );
+        // Try to insert with player_id first, fallback to basic insert if column doesn't exist
+        let result;
+        try {
+            result = await pool.query(
+                `INSERT INTO pairing_codes (code, device_info, player_id)
+                 VALUES ($1, $2, $3)
+                 RETURNING code, expires_at, player_id`,
+                [code, JSON.stringify(enhancedDeviceInfo), player_id || null]
+            );
+        } catch (insertError) {
+            // If player_id column doesn't exist, try without it
+            if (insertError.message && insertError.message.includes('player_id')) {
+                console.log('[Pairing] player_id column not found, using basic insert');
+                result = await pool.query(
+                    `INSERT INTO pairing_codes (code, device_info)
+                     VALUES ($1, $2)
+                     RETURNING code, expires_at`,
+                    [code, JSON.stringify(enhancedDeviceInfo)]
+                );
+            } else {
+                throw insertError;
+            }
+        }
 
         console.log('[Pairing] Generated code:', { code, player_id: player_id || 'none' });
 
         res.status(201).json({
             code: result.rows[0].code,
             expires_at: result.rows[0].expires_at,
-            player_id: result.rows[0].player_id
+            player_id: result.rows[0].player_id || null
         });
     } catch (error) {
         console.error('Generate pairing code error:', error);
