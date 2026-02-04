@@ -199,6 +199,76 @@ pool.on('error', (err, client) => {
     console.error('Unexpected error on idle client', err);
 });
 
+// Self-healing schema initialization
+async function ensureSchema() {
+    const client = await pool.connect();
+    try {
+        console.log('🔄 Checking database schema...');
+
+        // 1. Ensure pairing_codes table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS pairing_codes (
+                code VARCHAR(50) PRIMARY KEY,
+                device_info JSONB,
+                assigned_device_id UUID,
+                expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '15 minutes'),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // 2. Ensure player_id column exists in pairing_codes
+        const pairingColCheck = await client.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'pairing_codes' AND column_name = 'player_id'
+        `);
+
+        if (pairingColCheck.rows.length === 0) {
+            console.log('✨ Adding player_id to pairing_codes table...');
+            await client.query(`ALTER TABLE pairing_codes ADD COLUMN IF NOT EXISTS player_id VARCHAR(255)`);
+            await client.query(`CREATE INDEX IF NOT EXISTS idx_pairing_codes_player_id ON pairing_codes(player_id)`);
+        }
+
+        // 3. Ensure player_id and device_token exist in devices table
+        const deviceColCheck = await client.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'devices' AND column_name IN ('player_id', 'device_token')
+        `);
+
+        const existingCols = deviceColCheck.rows.map(r => r.column_name);
+
+        if (!existingCols.includes('player_id')) {
+            console.log('✨ Adding player_id to devices table...');
+            await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS player_id VARCHAR(255)`);
+            await client.query(`CREATE INDEX IF NOT EXISTS idx_devices_player_id ON devices(player_id)`);
+            // Add unique constraint safely
+            try {
+                await client.query(`ALTER TABLE devices ADD CONSTRAINT devices_player_id_key UNIQUE (player_id)`);
+            } catch (e) {
+                console.log('⚠️ Could not add unique constraint to player_id (might contain duplicates)');
+            }
+        }
+
+        if (!existingCols.includes('device_token')) {
+            console.log('✨ Adding device_token to devices table...');
+            await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_token VARCHAR(255)`);
+            await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS token_expiry TIMESTAMP WITH TIME ZONE`);
+            await client.query(`CREATE INDEX IF NOT EXISTS idx_devices_device_token ON devices(device_token)`);
+        }
+
+        console.log('✅ Schema check completed');
+    } catch (error) {
+        console.error('❌ Schema initialization failed:', error);
+        // Don't exit, try to continue running
+    } finally {
+        client.release();
+    }
+}
+
+// Run schema check on startup
+ensureSchema();
+
 // Get all devices
 app.get('/devices', authenticateToken, async (req, res) => {
     try {
@@ -762,7 +832,7 @@ app.post('/pairing/claim', authenticateToken, async (req, res) => {
         // 4. Get player_id from pairing code if available
         const pairingCodeData = codeResult.rows[0];
         const playerIdFromCode = pairingCodeData.player_id || null;
-        
+
         // 5. Create device with player_id if available
         const deviceCode = `PLAYER-${cleanCode}`;
         const deviceResult = await client.query(
@@ -782,10 +852,10 @@ app.post('/pairing/claim', authenticateToken, async (req, res) => {
         );
 
         await client.query('COMMIT');
-        
+
         console.log('[Pairing Claim] Device created:', { deviceId, playerId: finalPlayerId });
-        
-        res.json({ 
+
+        res.json({
             deviceId: deviceId,
             playerId: finalPlayerId,
             message: 'Device paired successfully'
