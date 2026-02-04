@@ -108,7 +108,10 @@ api.interceptors.request.use(
         const url = config.url || '';
         const isDevicePublicEndpoint = url.startsWith('/device/');
         
-        if (isDevicePublicEndpoint) {
+        // Also skip auth for player content endpoint (public)
+        const isPlayerContentEndpoint = url.includes('/schedules/player/') && url.includes('/content');
+        
+        if (isDevicePublicEndpoint || isPlayerContentEndpoint) {
             // Public endpoint - no auth required
             return config;
         }
