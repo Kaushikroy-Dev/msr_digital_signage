@@ -427,6 +427,13 @@ app.use('/uploads', createProxyMiddleware({
   pathRewrite: { '^/uploads': '/uploads' }
 }));
 
+// Migration endpoint - proxy to device-service
+app.use('/admin/run-migrations', createProxyMiddleware({
+  ...proxyOptions,
+  target: services.device,
+  pathRewrite: { '^/admin/run-migrations': '/admin/run-migrations' }
+}));
+
 // WebSocket Server for real-time communication
 const wss = new WebSocket.Server({
   server,
