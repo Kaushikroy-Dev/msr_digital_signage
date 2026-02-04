@@ -1116,30 +1116,57 @@ app.get('/player/:deviceId/content', async (req, res) => {
                 transition_effect: schedule.transition_effect,
                 transition_duration_ms: schedule.transition_duration_ms
             },
-            items: itemsResult.rows.map(item => ({
-                id: item.id,
-                content_type: item.content_type,
-                content_id: item.media_asset_id || item.template_id,
-                // Media fields
-                name: item.original_name,
-                file_type: item.file_type,
-                url: item.url ? `/uploads/${item.url}` : null,
-                thumbnail_url: item.thumbnail_url ? `/uploads/thumbnails/${path.basename(item.thumbnail_url || '')}` : null,
-                width: item.width,
-                height: item.height,
-                // Template fields (when content_type = 'template')
-                template: item.content_type === 'template' ? {
-                    id: item.template_id,
-                    name: item.template_name,
-                    width: item.template_width,
-                    height: item.template_height,
-                    zones: item.template_zones ? (typeof item.template_zones === 'string' ? JSON.parse(item.template_zones) : item.template_zones) : [],
-                    background_color: item.background_color,
-                    background_image_id: item.background_image_id
-                } : null,
-                duration_seconds: item.duration_seconds,
-                sequence_order: item.sequence_order
-            }))
+            items: itemsResult.rows.map(item => {
+                // Safely parse template_zones if it's a string
+                let zones = [];
+                if (item.content_type === 'template' && item.template_zones) {
+                    try {
+                        zones = typeof item.template_zones === 'string' 
+                            ? JSON.parse(item.template_zones) 
+                            : item.template_zones;
+                        if (!Array.isArray(zones)) zones = [];
+                    } catch (parseError) {
+                        console.error('[Player] Error parsing template_zones:', parseError);
+                        zones = [];
+                    }
+                }
+
+                // Safely handle thumbnail_url
+                let thumbnailUrl = null;
+                if (item.thumbnail_url) {
+                    try {
+                        thumbnailUrl = `/uploads/thumbnails/${path.basename(item.thumbnail_url)}`;
+                    } catch (pathError) {
+                        console.error('[Player] Error processing thumbnail_url:', pathError);
+                        thumbnailUrl = null;
+                    }
+                }
+
+                return {
+                    id: item.id,
+                    content_type: item.content_type,
+                    content_id: item.media_asset_id || item.template_id,
+                    // Media fields
+                    name: item.original_name || null,
+                    file_type: item.file_type || null,
+                    url: item.url ? `/uploads/${item.url}` : null,
+                    thumbnail_url: thumbnailUrl,
+                    width: item.width || null,
+                    height: item.height || null,
+                    // Template fields (when content_type = 'template')
+                    template: item.content_type === 'template' ? {
+                        id: item.template_id,
+                        name: item.template_name || null,
+                        width: item.template_width || null,
+                        height: item.template_height || null,
+                        zones: zones,
+                        background_color: item.background_color || null,
+                        background_image_id: item.background_image_id || null
+                    } : null,
+                    duration_seconds: item.duration_seconds || 0,
+                    sequence_order: item.sequence_order || 0
+                };
+            })
         });
     } catch (error) {
         console.error('Get player content error:', error);
