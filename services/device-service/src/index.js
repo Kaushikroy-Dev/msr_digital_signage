@@ -72,29 +72,41 @@ function authenticateToken(req, res, next) {
 
 // Comprehensive database configuration - supports all Railway formats
 function getDatabaseConfig() {
-    // Priority 1: DATABASE_URL (Railway sometimes provides this)
+    // Priority 1: DATABASE_URL (Railway provides this when database is linked)
     if (process.env.DATABASE_URL) {
         console.log('✅ Using DATABASE_URL from environment');
         return {
             connectionString: process.env.DATABASE_URL,
             max: 20,
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 5000,
+            connectionTimeoutMillis: 10000, // Increased timeout for Railway
         };
     }
 
     // Priority 2: Railway's standard PostgreSQL variables (PG*)
     // Priority 3: Custom variables (DATABASE_*)
     // Priority 4: Defaults (for local development only)
+    const host = process.env.PGHOST || process.env.DATABASE_HOST || 'localhost';
+    
+    // Check if Railway internal hostname is provided but might not resolve
+    // Railway internal hostnames end with .railway.internal
+    const isRailwayInternal = host.includes('.railway.internal');
+    
+    if (isRailwayInternal) {
+        console.warn('⚠️  Railway internal hostname detected:', host);
+        console.warn('   If connection fails, ensure database is properly linked in Railway');
+        console.warn('   Railway should provide DATABASE_URL when database is linked');
+    }
+    
     const config = {
-        host: process.env.PGHOST || process.env.DATABASE_HOST || 'localhost',
+        host: host,
         port: parseInt(process.env.PGPORT || process.env.DATABASE_PORT || '5432'),
         database: process.env.DATABASE_NAME || process.env.PGDATABASE || 'railway',
         user: process.env.PGUSER || process.env.DATABASE_USER || 'postgres',
         password: process.env.PGPASSWORD || process.env.DATABASE_PASSWORD || 'postgres',
         max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
+        connectionTimeoutMillis: 10000, // Increased timeout for Railway
     };
 
     // Validate we have required credentials (in production, don't use defaults)
@@ -174,7 +186,22 @@ async function testDatabaseConnection(retries = 5, delay = 2000) {
                 console.error('   💡 This usually means:');
                 console.error('      - Database host is incorrect or unreachable');
                 console.error('      - PostgreSQL service is not running');
-                console.error('   🔧 Fix: Verify PostgreSQL service is running and host is correct');
+                console.error('      - Railway internal hostname (.railway.internal) is not resolving');
+                console.error('   🔧 Fix:');
+                console.error('      1. Link PostgreSQL service to this service in Railway dashboard');
+                console.error('      2. Railway should auto-provide DATABASE_URL when linked');
+                console.error('      3. If DATABASE_URL is not available, check PGHOST/PGPASSWORD variables');
+                console.error('      4. Verify PostgreSQL service is running in Railway');
+                
+                // If using Railway internal hostname, suggest using DATABASE_URL
+                if (dbConfig.host && dbConfig.host.includes('.railway.internal')) {
+                    console.error('');
+                    console.error('   ⚠️  Railway internal hostname detected but not resolving');
+                    console.error('   📋 Check Railway dashboard:');
+                    console.error('      - Is PostgreSQL service linked to device-service?');
+                    console.error('      - Does DATABASE_URL environment variable exist?');
+                    console.error('      - If not, manually link the database service');
+                }
             }
 
             if (i < retries - 1) {
