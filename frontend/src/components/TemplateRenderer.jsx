@@ -35,48 +35,47 @@ export default function TemplateRenderer({
         ? template.zones
         : (typeof template.zones === 'string' ? JSON.parse(template.zones) : []));
 
-    // Load background image if exists (preload critical asset)
+    // Load background image and media assets in parallel for better performance
     useEffect(() => {
-        if (template.background_image_id) {
-            // Skip if tenantId is missing (for public routes, tenantId is required)
-            if (!tenantId) {
-                console.warn('[TemplateRenderer] Skipping background image load - tenantId missing');
-                return;
-            }
-            
-            // Preload background image (critical asset)
-            // Use tenantId for public access (player routes) or token's tenantId for admin
-            api.get('/content/assets', {
-                params: { tenantId: tenantId }
-            })
-                .then(response => {
-                    const assets = response.data.assets || [];
-                    const bgAsset = assets.find(a => a.id === template.background_image_id);
-                    if (bgAsset && bgAsset.url) {
-                        // Preload image
-                        const img = new Image();
-                        img.src = `${apiUrl}${bgAsset.url}`;
-                        img.onload = () => {
-                            setBackgroundImageUrl(`${apiUrl}${bgAsset.url}`);
-                        };
-                    }
-                })
-                .catch(err => {
-                    console.error('Failed to load background image:', err);
-                });
-        } else {
-            setBackgroundImageUrl(null);
-        }
-    }, [template.background_image_id, apiUrl, tenantId]);
-
-    // Load media assets for media zones (only if not provided as prop)
-    useEffect(() => {
-        // If mediaAssets are provided as prop, use them
+        // If mediaAssets are provided as prop, use them and only load background image
         if (mediaAssetsProp && Object.keys(mediaAssetsProp).length > 0) {
             setMediaAssets(mediaAssetsProp);
+            
+            // Still need to load background image if it exists
+            if (template.background_image_id && tenantId) {
+                api.get('/content/assets', {
+                    params: { tenantId: tenantId }
+                })
+                    .then(response => {
+                        const assets = response.data.assets || [];
+                        const bgAsset = assets.find(a => a.id === template.background_image_id);
+                        if (bgAsset && bgAsset.url) {
+                            const img = new Image();
+                            img.src = `${apiUrl}${bgAsset.url}`;
+                            img.onload = () => {
+                                setBackgroundImageUrl(`${apiUrl}${bgAsset.url}`);
+                            };
+                        }
+                    })
+                    .catch(err => {
+                        console.error('[TemplateRenderer] Failed to load background image:', err);
+                    });
+            } else if (!template.background_image_id) {
+                setBackgroundImageUrl(null);
+            }
             return;
         }
 
+        // Skip if tenantId is missing (for public routes, tenantId is required)
+        if (!tenantId) {
+            console.warn('[TemplateRenderer] Skipping asset loads - tenantId missing');
+            if (!template.background_image_id) {
+                setBackgroundImageUrl(null);
+            }
+            return;
+        }
+
+        // Get media zone IDs that need to be loaded
         const mediaZoneIds = zones
             .filter(zone => {
                 const contentType = zone.contentType || zone.content_type;
@@ -85,34 +84,61 @@ export default function TemplateRenderer({
             })
             .map(zone => zone.mediaAssetId || zone.media_asset_id);
 
-        if (mediaZoneIds.length === 0) return;
+        // Determine what needs to be loaded
+        const needsBackground = !!template.background_image_id;
+        const needsMediaAssets = mediaZoneIds.length > 0;
 
-        // Skip if tenantId is missing (for public routes, tenantId is required)
-        if (!tenantId) {
-            console.warn('[TemplateRenderer] Skipping media assets load - tenantId missing');
+        // If nothing to load, reset and return
+        if (!needsBackground && !needsMediaAssets) {
+            setBackgroundImageUrl(null);
             return;
         }
 
-        // Fetch all assets and filter by IDs
-        // Use tenantId for public access (player routes) or token's tenantId for admin
-        api.get('/content/assets', {
-            params: { tenantId: tenantId }
-        })
-            .then(response => {
-                const assets = response.data.assets || [];
-                const assetMap = {};
-                mediaZoneIds.forEach(id => {
-                    const asset = assets.find(a => a.id === id);
-                    if (asset) {
-                        assetMap[id] = asset;
-                    }
+        // Load all assets in parallel using a single API call
+        // This is more efficient than multiple sequential calls
+        const loadAssets = async () => {
+            try {
+                const response = await api.get('/content/assets', {
+                    params: { tenantId: tenantId }
                 });
-                setMediaAssets(assetMap);
-            })
-            .catch(err => {
-                console.error('Failed to load media assets:', err);
-            });
-    }, [zones, mediaAssetsProp, tenantId]);
+                const assets = response.data.assets || [];
+
+                // Process background image in parallel
+                if (needsBackground) {
+                    const bgAsset = assets.find(a => a.id === template.background_image_id);
+                    if (bgAsset && bgAsset.url) {
+                        // Preload image
+                        const img = new Image();
+                        img.src = `${apiUrl}${bgAsset.url}`;
+                        img.onload = () => {
+                            setBackgroundImageUrl(`${apiUrl}${bgAsset.url}`);
+                        };
+                        img.onerror = () => {
+                            console.error('[TemplateRenderer] Failed to load background image');
+                        };
+                    }
+                } else {
+                    setBackgroundImageUrl(null);
+                }
+
+                // Process media assets in parallel
+                if (needsMediaAssets) {
+                    const assetMap = {};
+                    mediaZoneIds.forEach(id => {
+                        const asset = assets.find(a => a.id === id);
+                        if (asset) {
+                            assetMap[id] = asset;
+                        }
+                    });
+                    setMediaAssets(assetMap);
+                }
+            } catch (err) {
+                console.error('[TemplateRenderer] Failed to load assets:', err);
+            }
+        };
+
+        loadAssets();
+    }, [template.background_image_id, zones, mediaAssetsProp, tenantId, apiUrl]);
 
     // Timer for template duration
     useEffect(() => {

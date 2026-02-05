@@ -171,7 +171,31 @@ if (!USE_S3) {
 }
 
 // Serve uploaded files statically (essential for local development or when not using S3)
-app.use('/uploads', express.static(UPLOAD_DIR));
+// Serve uploaded files with HTTP cache headers for performance
+app.use('/uploads', express.static(UPLOAD_DIR, {
+    maxAge: '1y', // 1 year cache for immutable media files
+    etag: true, // Enable ETag for conditional requests
+    lastModified: true, // Enable Last-Modified headers
+    setHeaders: (res, path) => {
+        // Videos: long cache with range request support
+        if (path.match(/\.(mp4|webm|mov|avi|m4v)$/i)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes'); // Enable range requests for video streaming
+        }
+        // Images: long cache
+        else if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        // Thumbnails: shorter cache (7 days)
+        else if (path.includes('thumbnails')) {
+            res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+        }
+        // Other files: default cache
+        else {
+            res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+        }
+    }
+}));
 
 // S3 Client configuration (only if credentials provided)
 let s3Client;
@@ -1160,7 +1184,31 @@ app.post('/assets/:id/regenerate-thumbnail', authenticateToken, async (req, res)
 
 // Serve uploaded files (for local storage)
 if (!USE_S3) {
-    app.use('/uploads', express.static(UPLOAD_DIR));
+    // Serve uploaded files with HTTP cache headers for performance
+app.use('/uploads', express.static(UPLOAD_DIR, {
+    maxAge: '1y', // 1 year cache for immutable media files
+    etag: true, // Enable ETag for conditional requests
+    lastModified: true, // Enable Last-Modified headers
+    setHeaders: (res, path) => {
+        // Videos: long cache with range request support
+        if (path.match(/\.(mp4|webm|mov|avi|m4v)$/i)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes'); // Enable range requests for video streaming
+        }
+        // Images: long cache
+        else if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        // Thumbnails: shorter cache (7 days)
+        else if (path.includes('thumbnails')) {
+            res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+        }
+        // Other files: default cache
+        else {
+            res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+        }
+    }
+}));
     // CORS is already handled by the middleware above - don't set it again
 }
 

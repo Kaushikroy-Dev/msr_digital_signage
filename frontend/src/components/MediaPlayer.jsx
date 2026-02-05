@@ -12,6 +12,8 @@ export default function MediaPlayer({
 }) {
     const [isPlaying, setIsPlaying] = useState(autoPlay);
     const [progress, setProgress] = useState(0);
+    const [isBuffering, setIsBuffering] = useState(false);
+    const [isReady, setIsReady] = useState(false);
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const timerRef = useRef(null);
@@ -80,6 +82,34 @@ export default function MediaPlayer({
         }
     };
 
+    const handleCanPlayThrough = () => {
+        // Video is ready to play without buffering
+        setIsBuffering(false);
+        setIsReady(true);
+        console.log('[MediaPlayer] Video ready to play');
+    };
+
+    const handleWaiting = () => {
+        // Video is buffering
+        setIsBuffering(true);
+        setIsReady(false);
+        console.log('[MediaPlayer] Video buffering...');
+    };
+
+    const handlePlaying = () => {
+        // Video started playing
+        setIsBuffering(false);
+        setIsReady(true);
+        console.log('[MediaPlayer] Video playing');
+    };
+
+    const handleLoadStart = () => {
+        // Video started loading
+        setIsBuffering(true);
+        setIsReady(false);
+        console.log('[MediaPlayer] Video loading started');
+    };
+
     if (!media) return null;
 
     const apiUrl = API_BASE_URL;
@@ -110,16 +140,29 @@ export default function MediaPlayer({
                         className="media-content tv-media"
                     />
                 ) : media.file_type === 'video' ? (
-                    <video
-                        ref={videoRef}
-                        src={mediaUrl}
-                        className="media-content tv-media"
-                        onTimeUpdate={handleVideoTimeUpdate}
-                        onEnded={handleVideoEnded}
-                        autoPlay={autoPlay}
-                        playsInline
-                        muted={false}
-                    />
+                    <>
+                        {isBuffering && (
+                            <div className="video-buffering-indicator">
+                                <div className="buffering-spinner"></div>
+                                <p>Loading...</p>
+                            </div>
+                        )}
+                        <video
+                            ref={videoRef}
+                            src={mediaUrl}
+                            className={`media-content tv-media ${isReady ? 'video-ready' : 'video-loading'}`}
+                            onTimeUpdate={handleVideoTimeUpdate}
+                            onEnded={handleVideoEnded}
+                            onCanPlayThrough={handleCanPlayThrough}
+                            onWaiting={handleWaiting}
+                            onPlaying={handlePlaying}
+                            onLoadStart={handleLoadStart}
+                            autoPlay={autoPlay}
+                            preload="auto"
+                            playsInline
+                            muted={false}
+                        />
+                    </>
                 ) : (
                     <div className="unsupported-media">
                         <p>Unsupported media type: {media.file_type}</p>

@@ -264,3 +264,49 @@
         opacity: 0.4;
     }
 }
+
+/* Video buffering indicator */
+.video-buffering-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    color: white;
+}
+
+.buffering-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.video-buffering-indicator p {
+    font-size: 1rem;
+    font-weight: 500;
+    margin: 0;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Video loading states */
+.video-loading {
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.video-ready {
+    opacity: 1;
+    transition: opacity 0.5s ease-in-out;
+}

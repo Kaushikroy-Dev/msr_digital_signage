@@ -11,6 +11,7 @@ import { initKioskMode, isElectron } from '../utils/kioskUtils';
 import { initTVRemote, initTizenRemote, initWebOSRemote } from '../utils/tvRemote';
 import { applyPlatformOptimizations, initOptimizations } from '../utils/platformOptimizations';
 import { initErrorHandling, log } from '../utils/platformLogger';
+import { cacheMediaUrls } from '../utils/offlineCache';
 import './DevicePlayer.css';
 
 // Detect WebView environment
@@ -161,7 +162,9 @@ export default function DevicePlayer() {
             return response.data;
         },
         enabled: !!playerId && !!deviceId && !initData?.pairing_required,
-        refetchInterval: 60000 // Refresh every minute
+        refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes (reduced from 1 minute)
+        staleTime: 4 * 60 * 1000, // Consider data stale after 4 minutes
+        cacheTime: 10 * 60 * 1000 // Keep in cache for 10 minutes
     });
 
     // Fetch current content for device
@@ -172,7 +175,9 @@ export default function DevicePlayer() {
             return response.data;
         },
         enabled: !!deviceId,
-        refetchInterval: 60000
+        refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes (reduced from 1 minute)
+        staleTime: 4 * 60 * 1000, // Consider data stale after 4 minutes
+        cacheTime: 10 * 60 * 1000 // Keep in cache for 10 minutes
     });
 
     // WebSocket for real-time commands with auto-reconnect
@@ -429,11 +434,71 @@ export default function DevicePlayer() {
         }
     }, [playerData, hasInitialContent]);
 
+    // Cache media URLs when playlist is loaded for faster access
+    useEffect(() => {
+        if (playerData?.items && playerData.items.length > 0) {
+            const mediaItems = playerData.items
+                .filter(item => item.url && (item.file_type === 'video' || item.file_type === 'image'))
+                .map(item => ({
+                    id: item.content_id || item.id,
+                    url: item.url
+                }));
+            
+            if (mediaItems.length > 0) {
+                cacheMediaUrls(mediaItems, API_BASE_URL).catch(err => {
+                    console.warn('[Player] Failed to cache media URLs:', err);
+                });
+            }
+        }
+    }, [playerData]);
+
     const handleMediaComplete = () => {
         if (!playerData?.items) return;
         const nextIndex = (currentIndex + 1) % playerData.items.length;
         setCurrentIndex(nextIndex);
     };
+
+    // Video preloading: Preload next 1-2 videos while current video plays
+    useEffect(() => {
+        if (!playerData?.items || !isPlaying) return;
+        
+        const preloadedVideos = [];
+        const maxPreload = 2; // Preload next 2 items
+        
+        // Preload next videos (up to maxPreload items)
+        for (let i = 1; i <= maxPreload; i++) {
+            const nextIndex = (currentIndex + i) % playerData.items.length;
+            const nextItem = playerData.items[nextIndex];
+            
+            // Only preload videos (not images or templates)
+            if (nextItem?.file_type === 'video' && nextItem?.url) {
+                const preloadVideo = document.createElement('video');
+                preloadVideo.preload = 'auto';
+                preloadVideo.src = `${API_BASE_URL}${nextItem.url}`;
+                preloadVideo.style.display = 'none';
+                preloadVideo.style.position = 'absolute';
+                preloadVideo.style.width = '1px';
+                preloadVideo.style.height = '1px';
+                preloadVideo.style.opacity = '0';
+                preloadVideo.style.pointerEvents = 'none';
+                
+                // Add to document for preloading
+                document.body.appendChild(preloadVideo);
+                preloadedVideos.push(preloadVideo);
+                
+                console.log(`[Player] Preloading next video ${i}: ${nextItem.name || nextItem.url}`);
+            }
+        }
+        
+        // Cleanup function: remove preloaded videos when component unmounts or dependencies change
+        return () => {
+            preloadedVideos.forEach(video => {
+                if (video.parentNode) {
+                    video.parentNode.removeChild(video);
+                }
+            });
+        };
+    }, [currentIndex, playerData, isPlaying, API_BASE_URL]);
 
     // Pairing Mode UI
     if (!deviceId) {
