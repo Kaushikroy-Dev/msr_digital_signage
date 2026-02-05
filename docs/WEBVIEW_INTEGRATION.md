@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity() {
         val url = if (deviceId != null && deviceId.isNotEmpty()) {
             "$baseUrl/player/$deviceId"
         } else {
-            "$baseUrl/media"
+            "$baseUrl/start"
         }
         
         webView.loadUrl(url)
@@ -178,7 +178,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
         if let deviceId = deviceId, !deviceId.isEmpty {
             urlString = "\(baseUrl)/player/\(deviceId)"
         } else {
-            urlString = "\(baseUrl)/media"
+            urlString = "\(baseUrl)/start"
         }
         
         if let url = URL(string: urlString) {
@@ -239,7 +239,7 @@ export function getDeviceIdFromNative() {
    - Player will automatically start playing content
    
 3. **If device_id does NOT exist**:
-   - Load: `https://frontend-production-73c0.up.railway.app/media`
+   - Load: `https://frontend-production-73c0.up.railway.app/start`
    - Web player will check for deviceId and redirect to registration if needed
    - After successful registration, `saveDeviceId()` will be called
    - On next app launch, deviceId will be found and player will load directly
@@ -249,7 +249,7 @@ export function getDeviceIdFromNative() {
 ### Android Testing
 
 1. Install app on Android device/emulator
-2. Launch app - should load `/media` route (no deviceId)
+2. Launch app - should load `/start` route (no deviceId)
 3. Complete device registration
 4. Verify `saveDeviceId()` is called (check logs)
 5. Close and restart app
@@ -258,7 +258,7 @@ export function getDeviceIdFromNative() {
 ### iOS Testing
 
 1. Install app on iOS device/simulator
-2. Launch app - should load `/media` route (no deviceId)
+2. Launch app - should load `/start` route (no deviceId)
 3. Complete device registration
 4. Verify `saveDeviceId` message is received (check logs)
 5. Close and restart app
@@ -363,7 +363,7 @@ class MainActivity : AppCompatActivity() {
         val url = if (deviceId != null && deviceId.isNotEmpty()) {
             "$baseUrl/player/$deviceId"
         } else {
-            "$baseUrl/media"
+            "$baseUrl/start"
         }
         
         webView.loadUrl(url)

@@ -3,6 +3,7 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
+const { createAuditLogger } = require('../../shared/middleware/auditLogger');
 require('dotenv').config();
 
 const app = express();
@@ -72,6 +73,10 @@ const pool = new Pool({
     user: process.env.DATABASE_USER || process.env.PGUSER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.PGPASSWORD || 'postgres',
 });
+
+// Apply audit logging middleware (after pool is created, before routes)
+const auditLogger = createAuditLogger(pool);
+app.use(auditLogger);
 
 // Get all templates with filtering, search, and sorting
 app.get('/templates', authenticateToken, async (req, res) => {

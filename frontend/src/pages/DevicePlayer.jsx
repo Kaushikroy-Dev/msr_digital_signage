@@ -174,10 +174,16 @@ export default function DevicePlayer() {
     });
 
     // Fetch current content for device
-    const { data: playerData, refetch } = useQuery({
+    const { data: playerData, refetch, error: playerDataError } = useQuery({
         queryKey: ['player-content', deviceId],
         queryFn: async () => {
             const response = await api.get(`/schedules/player/${deviceId}/content`);
+            console.log('[Player] Content response:', {
+                hasPlaylist: !!response.data?.playlist,
+                itemsCount: response.data?.items?.length || 0,
+                items: response.data?.items,
+                tenantId: response.data?.tenantId
+            });
             return response.data;
         },
         enabled: !!deviceId,
@@ -601,19 +607,64 @@ export default function DevicePlayer() {
         );
     }
 
-    if (!playerData || !playerData.playlist) {
+    // Show error if API call failed
+    if (playerDataError) {
+        console.error('[Player] Error fetching content:', playerDataError);
+        return (
+            <div className="device-player-container">
+                <div className="no-content">
+                    <h1>Error Loading Content</h1>
+                    <p>Device ID: {deviceId}</p>
+                    <p>Failed to fetch playlist content. Please check device assignment.</p>
+                    <button onClick={() => refetch()} style={{ marginTop: '16px', padding: '8px 16px' }}>
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // Check if we have valid player data
+    if (!playerData) {
+        return (
+            <div className="device-player-container">
+                <div className="no-content">
+                    <h1>Loading Content...</h1>
+                    <p>Device ID: {deviceId}</p>
+                    <p>Fetching playlist content...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Check if playlist exists
+    if (!playerData.playlist) {
         return (
             <div className="device-player-container">
                 <div className="no-content">
                     <h1>No Content Scheduled</h1>
                     <p>Device ID: {deviceId}</p>
-                    <p>Waiting for content to be scheduled...</p>
+                    <p>No playlist assigned to this device</p>
                 </div>
             </div>
         );
     }
 
     const { playlist, items } = playerData;
+
+    // Check if items array exists and has content
+    if (!items || !Array.isArray(items) || items.length === 0) {
+        return (
+            <div className="device-player-container">
+                <div className="no-content">
+                    <h1>Playlist Empty</h1>
+                    <p>The scheduled playlist "{playlist.name || 'Unknown'}" has no items</p>
+                    <p>Please add content to the playlist in the admin portal</p>
+                </div>
+            </div>
+        );
+    }
+
     const currentItem = items[currentIndex];
 
     if (!currentItem) {
@@ -621,7 +672,7 @@ export default function DevicePlayer() {
             <div className="device-player-container">
                 <div className="no-content">
                     <h1>Playlist Empty</h1>
-                    <p>The scheduled playlist has no items</p>
+                    <p>The scheduled playlist has no valid items</p>
                 </div>
             </div>
         );

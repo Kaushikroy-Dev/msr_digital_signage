@@ -3,6 +3,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const { createAuditLogger } = require('../../shared/middleware/auditLogger');
 require('dotenv').config();
 
 const app = express();
@@ -323,6 +324,10 @@ async function ensureSchema(retries = 10, delay = 3000) {
 
 // Run schema check on startup
 ensureSchema();
+
+// Apply audit logging middleware (after pool is created, before routes)
+const auditLogger = createAuditLogger(pool);
+app.use(auditLogger);
 
 // Get all devices
 app.get('/devices', authenticateToken, async (req, res) => {

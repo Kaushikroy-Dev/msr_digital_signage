@@ -14,11 +14,19 @@ export default function UserManagement() {
     const [userForm, setUserForm] = useState({
         email: '',
         password: '',
+        confirmPassword: '',
         firstName: '',
         lastName: '',
         role: 'viewer',
         propertyAccess: [],
         zoneAccess: []
+    });
+    
+    const [passwordValidation, setPasswordValidation] = useState({
+        length: false,
+        uppercase: false,
+        special: false,
+        numeric: false
     });
 
     // Fetch users
@@ -96,15 +104,38 @@ export default function UserManagement() {
         }
     });
 
+    // Password validation function
+    const validatePasswordStrength = (password) => {
+        return {
+            length: password.length >= 8,
+            uppercase: /[A-Z]/.test(password),
+            special: /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password),
+            numeric: /[0-9]/.test(password)
+        };
+    };
+
+    // Handle password change
+    const handlePasswordChange = (password) => {
+        setUserForm({ ...userForm, password });
+        setPasswordValidation(validatePasswordStrength(password));
+    };
+
     const resetForm = () => {
         setUserForm({
             email: '',
             password: '',
+            confirmPassword: '',
             firstName: '',
             lastName: '',
             role: 'viewer',
             propertyAccess: [],
             zoneAccess: []
+        });
+        setPasswordValidation({
+            length: false,
+            uppercase: false,
+            special: false,
+            numeric: false
         });
     };
 
@@ -203,7 +234,7 @@ export default function UserManagement() {
         return <div className="loading-container">Loading users...</div>;
     }
 
-    const showAccessControl = ['property_admin', 'zone_admin'].includes(userForm.role);
+    const showAccessControl = ['property_admin', 'zone_admin', 'content_editor', 'viewer'].includes(userForm.role);
 
     return (
         <div className="user-management-page">
@@ -273,11 +304,45 @@ export default function UserManagement() {
                                             type="password"
                                             className="premium-input"
                                             value={userForm.password}
-                                            onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                                            onChange={(e) => handlePasswordChange(e.target.value)}
                                             required={!editingUser}
                                             placeholder={editingUser ? 'Leave blank to keep current password' : ''}
                                         />
+                                        {userForm.password && !editingUser && (
+                                            <div className="password-validation" style={{ marginTop: '8px', fontSize: '12px' }}>
+                                                <div style={{ color: passwordValidation.length ? '#10b981' : '#ef4444' }}>
+                                                    {passwordValidation.length ? '✓' : '✗'} At least 8 characters
+                                                </div>
+                                                <div style={{ color: passwordValidation.uppercase ? '#10b981' : '#ef4444' }}>
+                                                    {passwordValidation.uppercase ? '✓' : '✗'} One uppercase letter
+                                                </div>
+                                                <div style={{ color: passwordValidation.special ? '#10b981' : '#ef4444' }}>
+                                                    {passwordValidation.special ? '✓' : '✗'} One special character
+                                                </div>
+                                                <div style={{ color: passwordValidation.numeric ? '#10b981' : '#ef4444' }}>
+                                                    {passwordValidation.numeric ? '✓' : '✗'} One numeric digit
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
+                                    {!editingUser && (
+                                        <div className="form-group">
+                                            <label>Confirm Password *</label>
+                                            <input
+                                                type="password"
+                                                className="premium-input"
+                                                value={userForm.confirmPassword}
+                                                onChange={(e) => setUserForm({ ...userForm, confirmPassword: e.target.value })}
+                                                required
+                                                placeholder="Re-enter password"
+                                            />
+                                            {userForm.confirmPassword && userForm.password !== userForm.confirmPassword && (
+                                                <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>
+                                                    Passwords do not match
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                     <div className="form-group">
                                         <label>Role *</label>
                                         <select
@@ -298,10 +363,14 @@ export default function UserManagement() {
                                     <div className="form-section">
                                         <h3>Access Control</h3>
 
-                                        {userForm.role === 'property_admin' && (
+                                        {(userForm.role === 'property_admin' || userForm.role === 'content_editor' || userForm.role === 'viewer') && (
                                             <div className="access-control-section">
                                                 <label>Property Access</label>
-                                                <p className="help-text">Select which properties this user can manage</p>
+                                                <p className="help-text">
+                                                    {userForm.role === 'property_admin' && 'Select which properties this user can manage'}
+                                                    {userForm.role === 'content_editor' && 'Select which properties this user can access for content management'}
+                                                    {userForm.role === 'viewer' && 'Select which properties this user can view'}
+                                                </p>
                                                 <div className="access-list">
                                                     {properties?.map((property) => (
                                                         <label key={property.id} className="access-item">

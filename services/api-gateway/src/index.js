@@ -17,6 +17,7 @@ app.set('trust proxy', true);
 // WebSocket clients map - must be defined before proxyOptions
 const clients = new Map(); // deviceId -> WebSocket connection
 const playerClients = new Map(); // player_id -> WebSocket connection
+const logClients = new Map(); // tenantId -> Set of WebSocket connections
 
 // Broadcast message to specific device
 function sendToDevice(deviceId, message) {
@@ -476,6 +477,19 @@ wss.on('connection', (ws, req) => {
         // Forward to device service for processing
       }
 
+      // Handle log streaming subscription
+      if (data.type === 'subscribe_logs' && data.tenantId) {
+        const tenantId = data.tenantId;
+        if (!logClients.has(tenantId)) {
+          logClients.set(tenantId, new Set());
+        }
+        logClients.get(tenantId).add(ws);
+        ws.tenantId = tenantId;
+        ws.isLogSubscriber = true;
+        console.log(`Log subscription registered for tenant: ${tenantId}`);
+        ws.send(JSON.stringify({ type: 'logs_subscribed', tenantId }));
+      }
+
     } catch (error) {
       console.error('WebSocket message error:', error);
     }
@@ -490,6 +504,16 @@ wss.on('connection', (ws, req) => {
       playerClients.delete(playerId);
       console.log(`Player disconnected: ${playerId}`);
     }
+    if (ws.isLogSubscriber && ws.tenantId) {
+      const clients = logClients.get(ws.tenantId);
+      if (clients) {
+        clients.delete(ws);
+        if (clients.size === 0) {
+          logClients.delete(ws.tenantId);
+        }
+        console.log(`Log subscription removed for tenant: ${ws.tenantId}`);
+      }
+    }
   });
 
   ws.on('error', (error) => {
@@ -497,10 +521,47 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+// Broadcast log entry to all subscribed clients for a tenant
+function broadcastLog(tenantId, logEntry) {
+  const clients = logClients.get(tenantId);
+  if (clients) {
+    const message = JSON.stringify({
+      type: 'log',
+      data: logEntry
+    });
+    let sentCount = 0;
+    clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        try {
+          client.send(message);
+          sentCount++;
+        } catch (error) {
+          console.error('Error sending log to client:', error);
+          // Remove dead connection
+          clients.delete(client);
+        }
+      } else {
+        // Remove closed connections
+        clients.delete(client);
+      }
+    });
+    
+    // Clean up empty sets
+    if (clients.size === 0) {
+      logClients.delete(tenantId);
+    }
+    
+    if (sentCount > 0) {
+      console.log(`Broadcasted log to ${sentCount} client(s) for tenant: ${tenantId}`);
+    }
+  }
+}
+
 // Export broadcast functions for use by other services (already defined above)
 app.locals.sendToDevice = sendToDevice;
 app.locals.sendToPlayer = sendToPlayer;
 app.locals.broadcastToAll = broadcastToAll;
+app.locals.broadcastLog = broadcastLog;
 
 // Internal endpoint for device-service to send WebSocket notifications
 // Protected by internal service token or Railway internal network
@@ -532,6 +593,26 @@ app.post('/api/internal/notify-player', (req, res) => {
   } catch (error) {
     console.error('[Gateway] Error in notify-player endpoint:', error);
     res.status(500).json({ error: 'Failed to send notification', details: error.message });
+  }
+});
+
+// Internal endpoint for services to broadcast logs via WebSocket
+// Services can POST logs here, and API Gateway will broadcast to subscribed clients
+app.post('/api/internal/broadcast-log', (req, res) => {
+  try {
+    const { tenantId, logEntry } = req.body;
+    
+    if (!tenantId || !logEntry) {
+      return res.status(400).json({ error: 'tenantId and logEntry are required' });
+    }
+    
+    // Broadcast log to all subscribed clients for this tenant
+    broadcastLog(tenantId, logEntry);
+    
+    return res.json({ success: true, message: 'Log broadcasted' });
+  } catch (error) {
+    console.error('[Gateway] Error in broadcast-log endpoint:', error);
+    res.status(500).json({ error: 'Failed to broadcast log', details: error.message });
   }
 });
 

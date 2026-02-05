@@ -1,0 +1,115 @@
+.user-settings-page {
+    padding: 24px;
+}
+
+.settings-content {
+    max-width: 800px;
+    margin-top: 24px;
+}
+
+.settings-section {
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 24px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.2fa-setup,
+.2fa-verification,
+.2fa-enabled {
+    margin-top: 16px;
+}
+
+.help-text {
+    color: #6b7280;
+    font-size: 14px;
+    margin: 8px 0;
+}
+
+.warning-text {
+    color: #dc2626;
+    font-size: 14px;
+    font-weight: 500;
+    margin: 8px 0;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 500;
+    margin-bottom: 16px;
+}
+
+.status-badge.enabled {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.backup-codes-display {
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+}
+
+.backup-codes-display h3 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+}
+
+.backup-codes-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.backup-code-item {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 8px;
+    background: white;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.disable-section {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.disable-section h3 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+}
+
+.error-message {
+    color: #dc2626;
+    font-size: 14px;
+    margin-top: 8px;
+    padding: 8px;
+    background: #fee2e2;
+    border-radius: 4px;
+}

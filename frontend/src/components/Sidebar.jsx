@@ -9,6 +9,8 @@ import {
     Building2,
     MapPin,
     Users,
+    Terminal,
+    Settings,
     LogOut
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
@@ -23,6 +25,8 @@ const menuItems = [
     { path: '/scheduler', icon: Calendar, label: 'Scheduler' },
     { path: '/devices', icon: Monitor, label: 'Devices' },
     { path: '/users', icon: Users, label: 'Users', requiresRole: 'super_admin' },
+    { path: '/settings', icon: Settings, label: 'Settings' },
+    { path: '/logs', icon: Terminal, label: 'Activity Logs' },
 ];
 
 export default function Sidebar() {

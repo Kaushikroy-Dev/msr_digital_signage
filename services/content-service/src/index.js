@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
+const { createAuditLogger } = require('../../shared/middleware/auditLogger');
 require('dotenv').config();
 
 const app = express();
@@ -147,6 +148,11 @@ pool.query('SELECT current_database(), current_schema()')
     .catch(err => {
         console.error('[DB] Connection error:', err);
     });
+
+// Apply audit logging middleware (after pool is created, before routes)
+// This middleware logs all authenticated requests to audit_logs table
+const auditLogger = createAuditLogger(pool);
+app.use(auditLogger);
 
 // Check if using S3 or local storage
 // Only use S3 if credentials are provided AND are not placeholder values

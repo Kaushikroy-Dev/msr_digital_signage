@@ -12,6 +12,8 @@ import UserManagement from './pages/UserManagement';
 import Organization from './pages/Organization';
 import DevicePlayer from './pages/DevicePlayer';
 import MediaRedirect from './pages/MediaRedirect';
+import ActivityLog from './pages/ActivityLog';
+import UserSettings from './pages/UserSettings';
 import Layout from './components/Layout';
 
 const queryClient = new QueryClient();
@@ -28,7 +30,7 @@ function App() {
                 <Routes>
                     <Route path="/login" element={<Login />} />
                     {/* Public route for device entry point - checks for deviceId and redirects */}
-                    <Route path="/media" element={<MediaRedirect />} />
+                    <Route path="/start" element={<MediaRedirect />} />
                     {/* Public route for device player */}
                     <Route path="/player" element={<DevicePlayer />} />
                     <Route path="/player/:deviceId" element={<DevicePlayer />} />
@@ -48,7 +50,9 @@ function App() {
                         <Route path="devices" element={<Devices />} />
                         <Route path="properties" element={<Organization />} />
                         <Route path="users" element={<UserManagement />} />
+                        <Route path="settings" element={<UserSettings />} />
                         <Route path="organization" element={<Organization />} />
+                        <Route path="logs" element={<ActivityLog />} />
                     </Route>
                 </Routes>
             </BrowserRouter>
