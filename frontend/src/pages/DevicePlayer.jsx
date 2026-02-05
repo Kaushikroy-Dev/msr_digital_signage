@@ -12,13 +12,8 @@ import { initTVRemote, initTizenRemote, initWebOSRemote } from '../utils/tvRemot
 import { applyPlatformOptimizations, initOptimizations } from '../utils/platformOptimizations';
 import { initErrorHandling, log } from '../utils/platformLogger';
 import { cacheMediaUrls } from '../utils/offlineCache';
+import { saveDeviceIdToNative } from '../utils/webViewUtils';
 import './DevicePlayer.css';
-
-// Detect WebView environment
-const isWebView = () => {
-    const ua = navigator.userAgent;
-    return /wv|WebView/i.test(ua) || window.Android !== undefined;
-};
 
 export default function DevicePlayer() {
     const { deviceId: urlDeviceId } = useParams();
@@ -139,6 +134,17 @@ export default function DevicePlayer() {
         }
         return () => clearInterval(pollInterval);
     }, [pairingCode, deviceId]);
+
+    // Save deviceId to native app (WebView) and localStorage (browser) when obtained
+    useEffect(() => {
+        if (deviceId) {
+            // Always save to localStorage (for browser fallback)
+            localStorage.setItem('ds_device_id', deviceId);
+            
+            // Save to native app if running in WebView
+            saveDeviceIdToNative(deviceId);
+        }
+    }, [deviceId]);
 
     // Update URL when deviceId changes (from any source: WebSocket, polling, or init)
     useEffect(() => {
