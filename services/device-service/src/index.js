@@ -231,70 +231,93 @@ pool.on('error', (err, client) => {
     console.error('Unexpected error on idle client', err);
 });
 
-// Self-healing schema initialization
-async function ensureSchema() {
-    const client = await pool.connect();
-    try {
-        console.log('🔄 Checking database schema...');
-
-        // 1. Ensure pairing_codes table exists
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS pairing_codes (
-                code VARCHAR(50) PRIMARY KEY,
-                device_info JSONB,
-                assigned_device_id UUID,
-                expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '15 minutes'),
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
-        // 2. Ensure player_id column exists in pairing_codes
-        const pairingColCheck = await client.query(`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'pairing_codes' AND column_name = 'player_id'
-        `);
-
-        if (pairingColCheck.rows.length === 0) {
-            console.log('✨ Adding player_id to pairing_codes table...');
-            await client.query(`ALTER TABLE pairing_codes ADD COLUMN IF NOT EXISTS player_id VARCHAR(255)`);
-            await client.query(`CREATE INDEX IF NOT EXISTS idx_pairing_codes_player_id ON pairing_codes(player_id)`);
-        }
-
-        // 3. Ensure player_id and device_token exist in devices table
-        const deviceColCheck = await client.query(`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'devices' AND column_name IN ('player_id', 'device_token')
-        `);
-
-        const existingCols = deviceColCheck.rows.map(r => r.column_name);
-
-        if (!existingCols.includes('player_id')) {
-            console.log('✨ Adding player_id to devices table...');
-            await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS player_id VARCHAR(255)`);
-            await client.query(`CREATE INDEX IF NOT EXISTS idx_devices_player_id ON devices(player_id)`);
-            // Add unique constraint safely
+// Self-healing schema initialization with retry logic
+async function ensureSchema(retries = 10, delay = 3000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const client = await pool.connect();
             try {
-                await client.query(`ALTER TABLE devices ADD CONSTRAINT devices_player_id_key UNIQUE (player_id)`);
-            } catch (e) {
-                console.log('⚠️ Could not add unique constraint to player_id (might contain duplicates)');
+                console.log(`🔄 Checking database schema... (attempt ${i + 1}/${retries})`);
+
+                // 1. Ensure pairing_codes table exists
+                await client.query(`
+                    CREATE TABLE IF NOT EXISTS pairing_codes (
+                        code VARCHAR(50) PRIMARY KEY,
+                        device_info JSONB,
+                        assigned_device_id UUID,
+                        expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '15 minutes'),
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+
+                // 2. Ensure player_id column exists in pairing_codes
+                const pairingColCheck = await client.query(`
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'pairing_codes' AND column_name = 'player_id'
+                `);
+
+                if (pairingColCheck.rows.length === 0) {
+                    console.log('✨ Adding player_id to pairing_codes table...');
+                    await client.query(`ALTER TABLE pairing_codes ADD COLUMN IF NOT EXISTS player_id VARCHAR(255)`);
+                    await client.query(`CREATE INDEX IF NOT EXISTS idx_pairing_codes_player_id ON pairing_codes(player_id)`);
+                }
+
+                // 3. Ensure player_id and device_token exist in devices table
+                const deviceColCheck = await client.query(`
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'devices' AND column_name IN ('player_id', 'device_token')
+                `);
+
+                const existingCols = deviceColCheck.rows.map(r => r.column_name);
+
+                if (!existingCols.includes('player_id')) {
+                    console.log('✨ Adding player_id to devices table...');
+                    await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS player_id VARCHAR(255)`);
+                    await client.query(`CREATE INDEX IF NOT EXISTS idx_devices_player_id ON devices(player_id)`);
+                    // Add unique constraint safely
+                    try {
+                        await client.query(`ALTER TABLE devices ADD CONSTRAINT devices_player_id_key UNIQUE (player_id)`);
+                    } catch (e) {
+                        console.log('⚠️ Could not add unique constraint to player_id (might contain duplicates)');
+                    }
+                }
+
+                if (!existingCols.includes('device_token')) {
+                    console.log('✨ Adding device_token to devices table...');
+                    await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_token VARCHAR(255)`);
+                    await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS token_expiry TIMESTAMP WITH TIME ZONE`);
+                    await client.query(`CREATE INDEX IF NOT EXISTS idx_devices_device_token ON devices(device_token)`);
+                }
+
+                console.log('✅ Schema check completed');
+                client.release();
+                return; // Success - exit retry loop
+            } catch (error) {
+                client.release();
+                throw error; // Re-throw to be caught by outer catch
+            }
+        } catch (error) {
+            const errorMsg = error.message || error.toString();
+            console.error(`❌ Schema initialization attempt ${i + 1}/${retries} failed:`, errorMsg);
+            
+            // Check if it's a connection error
+            if (errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('getaddrinfo')) {
+                console.error('   💡 Database connection error - Railway internal hostname may not be resolving');
+                console.error('   🔧 Ensure PostgreSQL service is linked in Railway dashboard');
+                console.error('   🔧 Railway should provide DATABASE_URL when database is linked');
+            }
+            
+            if (i < retries - 1) {
+                console.log(`⏳ Retrying schema initialization in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error('❌ Schema initialization failed after all retries');
+                console.error('⚠️  Service will continue running, but database operations may fail');
+                // Don't throw - let the service start even if schema init fails
             }
         }
-
-        if (!existingCols.includes('device_token')) {
-            console.log('✨ Adding device_token to devices table...');
-            await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_token VARCHAR(255)`);
-            await client.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS token_expiry TIMESTAMP WITH TIME ZONE`);
-            await client.query(`CREATE INDEX IF NOT EXISTS idx_devices_device_token ON devices(device_token)`);
-        }
-
-        console.log('✅ Schema check completed');
-    } catch (error) {
-        console.error('❌ Schema initialization failed:', error);
-        // Don't exit, try to continue running
-    } finally {
-        client.release();
     }
 }
 
