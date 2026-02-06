@@ -110,10 +110,27 @@ export default function MediaPlayer({
         console.log('[MediaPlayer] Video loading started');
     };
 
+    const [loadError, setLoadError] = useState(null);
+
     if (!media) return null;
 
     const apiUrl = API_BASE_URL;
     const mediaUrl = `${apiUrl}${media.url}`;
+
+    // Handle media loading errors
+    const handleError = (error) => {
+        console.error('[MediaPlayer] Error loading media:', {
+            url: mediaUrl,
+            error: error.message || 'Unknown error',
+            mediaType: media.file_type
+        });
+        setLoadError('Failed to load media');
+    };
+
+    // Reset error when media changes
+    useEffect(() => {
+        setLoadError(null);
+    }, [media.url]);
 
     // Auto-enter fullscreen on mount for TV mode
     useEffect(() => {
@@ -138,30 +155,47 @@ export default function MediaPlayer({
                         src={mediaUrl}
                         alt={media.name || media.original_name}
                         className="media-content tv-media"
+                        onError={handleError}
                     />
                 ) : media.file_type === 'video' ? (
                     <>
-                        {isBuffering && (
-                            <div className="video-buffering-indicator">
-                                <div className="buffering-spinner"></div>
-                                <p>Loading...</p>
+                        {loadError ? (
+                            <div className="video-error-indicator" style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                height: '100%',
+                                color: 'white',
+                                background: 'rgba(0, 0, 0, 0.7)'
+                            }}>
+                                <p style={{ fontSize: '18px', marginBottom: '10px' }}>Video failed to load</p>
+                                <p style={{ fontSize: '14px', opacity: 0.7 }}>{loadError}</p>
                             </div>
-                        )}
-                        <video
-                            ref={videoRef}
-                            src={mediaUrl}
-                            className={`media-content tv-media ${isReady ? 'video-ready' : 'video-loading'}`}
-                            onTimeUpdate={handleVideoTimeUpdate}
-                            onEnded={handleVideoEnded}
-                            onCanPlayThrough={handleCanPlayThrough}
-                            onWaiting={handleWaiting}
-                            onPlaying={handlePlaying}
-                            onLoadStart={handleLoadStart}
-                            autoPlay={autoPlay}
-                            preload="auto"
-                            playsInline
-                            muted={false}
-                        />
+                        ) : (
+                            <>
+                                {isBuffering && (
+                                    <div className="video-buffering-indicator">
+                                        <div className="buffering-spinner"></div>
+                                        <p>Loading...</p>
+                                    </div>
+                                )}
+                                <video
+                                    ref={videoRef}
+                                    src={mediaUrl}
+                                    className={`media-content tv-media ${isReady ? 'video-ready' : 'video-loading'}`}
+                                    onTimeUpdate={handleVideoTimeUpdate}
+                                    onEnded={handleVideoEnded}
+                                    onCanPlayThrough={handleCanPlayThrough}
+                                    onWaiting={handleWaiting}
+                                    onPlaying={handlePlaying}
+                                    onLoadStart={handleLoadStart}
+                                    onError={handleError}
+                                    autoPlay={autoPlay}
+                                    preload="auto"
+                                    playsInline
+                                    muted={false}
+                                />
                     </>
                 ) : (
                     <div className="unsupported-media">

@@ -13,6 +13,7 @@ import { applyPlatformOptimizations, initOptimizations } from '../utils/platform
 import { initErrorHandling, log } from '../utils/platformLogger';
 import { cacheMediaUrls } from '../utils/offlineCache';
 import { saveDeviceIdToNative, getDeviceId as getDeviceIdFromStorage, clearDeviceId } from '../utils/webViewUtils';
+import ClockWidget from '../components/widgets/ClockWidget';
 import './DevicePlayer.css';
 
 export default function DevicePlayer() {
@@ -191,22 +192,44 @@ export default function DevicePlayer() {
     });
 
     // Fetch current content for device
-    const { data: playerData, refetch, error: playerDataError } = useQuery({
+    const { data: playerData, refetch, error: playerDataError, isLoading: playerDataLoading } = useQuery({
         queryKey: ['player-content', deviceId],
         queryFn: async () => {
-            const response = await api.get(`/schedules/player/${deviceId}/content`);
-            console.log('[Player] Content response:', {
-                hasPlaylist: !!response.data?.playlist,
-                itemsCount: response.data?.items?.length || 0,
-                items: response.data?.items,
-                tenantId: response.data?.tenantId
-            });
-            return response.data;
+            try {
+                const response = await api.get(`/schedules/player/${deviceId}/content`);
+                console.log('[Player] Content response:', {
+                    hasPlaylist: !!response.data?.playlist,
+                    playlistId: response.data?.playlist?.id,
+                    playlistName: response.data?.playlist?.name,
+                    itemsCount: response.data?.items?.length || 0,
+                    items: response.data?.items,
+                    tenantId: response.data?.tenantId,
+                    fullResponse: response.data
+                });
+                
+                // Validate response structure
+                if (!response.data) {
+                    console.error('[Player] Empty response data');
+                    throw new Error('Empty response from server');
+                }
+                
+                return response.data;
+            } catch (error) {
+                console.error('[Player] Error fetching content:', {
+                    message: error.message,
+                    response: error.response?.data,
+                    status: error.response?.status,
+                    deviceId
+                });
+                throw error;
+            }
         },
         enabled: !!deviceId,
         refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes (reduced from 1 minute)
         staleTime: 4 * 60 * 1000, // Consider data stale after 4 minutes
-        cacheTime: 10 * 60 * 1000 // Keep in cache for 10 minutes
+        cacheTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+        retry: 3, // Retry 3 times on failure
+        retryDelay: 2000 // Wait 2 seconds between retries
     });
 
     // WebSocket for real-time commands with auto-reconnect
@@ -658,13 +681,53 @@ export default function DevicePlayer() {
     }
 
     // Check if we have valid player data
-    if (!playerData) {
+    if (playerDataLoading) {
         return (
             <div className="device-player-container">
                 <div className="no-content">
                     <h1>Loading Content...</h1>
                     <p>Device ID: {deviceId}</p>
                     <p>Fetching playlist content...</p>
+                    <div className="loading-spinner" style={{ marginTop: '20px' }}></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!playerData) {
+        // Show fallback clock when no content is available
+        return (
+            <div className="device-player-container tv-mode">
+                <div style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    background: '#000'
+                }}>
+                    <div style={{ 
+                        background: 'rgba(255, 255, 255, 0.1)', 
+                        padding: '40px', 
+                        borderRadius: '8px',
+                        minWidth: '300px'
+                    }}>
+                        <ClockWidget config={{ 
+                            showDate: true, 
+                            showSeconds: true,
+                            fontSize: 48,
+                            textColor: '#ffffff'
+                        }} />
+                        <p style={{ 
+                            color: '#fff', 
+                            textAlign: 'center', 
+                            marginTop: '20px',
+                            fontSize: '14px',
+                            opacity: 0.7
+                        }}>
+                            No content available
+                        </p>
+                    </div>
                 </div>
             </div>
         );
@@ -672,12 +735,39 @@ export default function DevicePlayer() {
 
     // Check if playlist exists
     if (!playerData.playlist) {
+        // Show fallback clock when no playlist is assigned
         return (
-            <div className="device-player-container">
-                <div className="no-content">
-                    <h1>No Content Scheduled</h1>
-                    <p>Device ID: {deviceId}</p>
-                    <p>No playlist assigned to this device</p>
+            <div className="device-player-container tv-mode">
+                <div style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    background: '#000'
+                }}>
+                    <div style={{ 
+                        background: 'rgba(255, 255, 255, 0.1)', 
+                        padding: '40px', 
+                        borderRadius: '8px',
+                        minWidth: '300px'
+                    }}>
+                        <ClockWidget config={{ 
+                            showDate: true, 
+                            showSeconds: true,
+                            fontSize: 48,
+                            textColor: '#ffffff'
+                        }} />
+                        <p style={{ 
+                            color: '#fff', 
+                            textAlign: 'center', 
+                            marginTop: '20px',
+                            fontSize: '14px',
+                            opacity: 0.7
+                        }}>
+                            No playlist assigned
+                        </p>
+                    </div>
                 </div>
             </div>
         );
@@ -687,12 +777,39 @@ export default function DevicePlayer() {
 
     // Check if items array exists and has content
     if (!items || !Array.isArray(items) || items.length === 0) {
+        // Show fallback clock when playlist is empty
         return (
-            <div className="device-player-container">
-                <div className="no-content">
-                    <h1>Playlist Empty</h1>
-                    <p>The scheduled playlist "{playlist.name || 'Unknown'}" has no items</p>
-                    <p>Please add content to the playlist in the admin portal</p>
+            <div className="device-player-container tv-mode">
+                <div style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    background: '#000'
+                }}>
+                    <div style={{ 
+                        background: 'rgba(255, 255, 255, 0.1)', 
+                        padding: '40px', 
+                        borderRadius: '8px',
+                        minWidth: '300px'
+                    }}>
+                        <ClockWidget config={{ 
+                            showDate: true, 
+                            showSeconds: true,
+                            fontSize: 48,
+                            textColor: '#ffffff'
+                        }} />
+                        <p style={{ 
+                            color: '#fff', 
+                            textAlign: 'center', 
+                            marginTop: '20px',
+                            fontSize: '14px',
+                            opacity: 0.7
+                        }}>
+                            Playlist "{playlist.name || 'Unknown'}" is empty
+                        </p>
+                    </div>
                 </div>
             </div>
         );
@@ -734,6 +851,47 @@ export default function DevicePlayer() {
         file_type: currentItem.file_type,
         url: currentItem.url
     };
+
+    // Validate media URL before rendering
+    if (!currentMedia.url && currentItem.content_type === 'media') {
+        console.error('[Player] Media item has no URL:', currentItem);
+        // Show fallback clock when media URL is missing
+        return (
+            <div className="device-player-container tv-mode">
+                <div style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    background: '#000'
+                }}>
+                    <div style={{ 
+                        background: 'rgba(255, 255, 255, 0.1)', 
+                        padding: '40px', 
+                        borderRadius: '8px',
+                        minWidth: '300px'
+                    }}>
+                        <ClockWidget config={{ 
+                            showDate: true, 
+                            showSeconds: true,
+                            fontSize: 48,
+                            textColor: '#ffffff'
+                        }} />
+                        <p style={{ 
+                            color: '#fff', 
+                            textAlign: 'center', 
+                            marginTop: '20px',
+                            fontSize: '14px',
+                            opacity: 0.7
+                        }}>
+                            Content URL missing
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="device-player-container tv-mode">
