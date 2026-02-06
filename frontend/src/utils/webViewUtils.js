@@ -141,3 +141,51 @@ export function getDeviceId() {
 
     return null;
 }
+
+/**
+ * Clear deviceId from native app and localStorage
+ * This is called when a device is deleted from the backend
+ * @returns {boolean} True if successfully cleared
+ */
+export function clearDeviceId() {
+    let cleared = false;
+
+    // Clear from native app (Android/iOS)
+    if (isAndroidWebView() && window.Android) {
+        try {
+            if (typeof window.Android.clearDeviceId === 'function') {
+                window.Android.clearDeviceId();
+                console.log('[WebView] DeviceId cleared from Android app');
+                cleared = true;
+            } else if (typeof window.Android.saveDeviceId === 'function') {
+                // Fallback: save empty string to clear
+                window.Android.saveDeviceId('');
+                console.log('[WebView] DeviceId cleared from Android app (via saveDeviceId)');
+                cleared = true;
+            }
+        } catch (err) {
+            console.error('[WebView] Failed to clear deviceId from Android:', err);
+        }
+    } else if (isIOSWebView() && window.webkit?.messageHandlers?.clearDeviceId) {
+        try {
+            window.webkit.messageHandlers.clearDeviceId.postMessage({});
+            console.log('[WebView] DeviceId cleared from iOS app');
+            cleared = true;
+        } catch (err) {
+            console.error('[WebView] Failed to clear deviceId from iOS:', err);
+        }
+    }
+
+    // Clear from localStorage (browser/fallback)
+    if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+            localStorage.removeItem('ds_device_id');
+            console.log('[WebView] DeviceId cleared from localStorage');
+            cleared = true;
+        } catch (err) {
+            console.error('[WebView] Failed to clear deviceId from localStorage:', err);
+        }
+    }
+
+    return cleared;
+}

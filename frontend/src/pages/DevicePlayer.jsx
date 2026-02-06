@@ -12,7 +12,7 @@ import { initTVRemote, initTizenRemote, initWebOSRemote } from '../utils/tvRemot
 import { applyPlatformOptimizations, initOptimizations } from '../utils/platformOptimizations';
 import { initErrorHandling, log } from '../utils/platformLogger';
 import { cacheMediaUrls } from '../utils/offlineCache';
-import { saveDeviceIdToNative, getDeviceId as getDeviceIdFromStorage } from '../utils/webViewUtils';
+import { saveDeviceIdToNative, getDeviceId as getDeviceIdFromStorage, clearDeviceId } from '../utils/webViewUtils';
 import './DevicePlayer.css';
 
 export default function DevicePlayer() {
@@ -317,6 +317,22 @@ export default function DevicePlayer() {
                                     }));
                                     localStorage.clear();
                                     setTimeout(() => window.location.reload(), 500);
+                                    break;
+
+                                case 'reset_device_id':
+                                    console.log('[Player] Resetting device ID (device deleted from backend)...');
+                                    // Clear device ID from native storage and localStorage
+                                    clearDeviceId();
+                                    // Send acknowledgment
+                                    ws.send(JSON.stringify({
+                                        type: 'command_ack',
+                                        command: 'reset_device_id',
+                                        deviceId
+                                    }));
+                                    // Redirect to start page to re-register
+                                    setTimeout(() => {
+                                        window.location.href = '/start';
+                                    }, 1000);
                                     break;
 
                                 case 'refresh':

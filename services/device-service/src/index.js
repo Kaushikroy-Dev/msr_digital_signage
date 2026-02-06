@@ -1033,12 +1033,159 @@ app.delete('/devices/:id', authenticateToken, async (req, res) => {
         }
 
         console.log(`[DeviceService] Deleting device: ${id}`);
+        
+        // Send reset_device_id command to the device before deleting
+        // This will clear the device ID from Android TV storage
+        try {
+            const apiGatewayUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+            const http = require('http');
+            const https = require('https');
+            const url = require('url');
+            
+            const gatewayUrl = new URL(`${apiGatewayUrl}/api/internal/send-device-command`);
+            const client = gatewayUrl.protocol === 'https:' ? https : http;
+            
+            const postData = JSON.stringify({
+                deviceId: id,
+                commandType: 'reset_device_id'
+            });
+            
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData)
+                },
+                timeout: 2000 // 2 second timeout - don't block deletion if gateway is slow
+            };
+            
+            const req = client.request(gatewayUrl, options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => {
+                    if (res.statusCode === 200) {
+                        console.log(`[DeviceService] Reset command sent to device ${id}`);
+                    } else {
+                        console.log(`[DeviceService] Failed to send reset command (status ${res.statusCode})`);
+                    }
+                });
+            });
+            
+            req.on('error', (err) => {
+                console.log(`[DeviceService] Error sending reset command: ${err.message}`);
+            });
+            
+            req.on('timeout', () => {
+                req.destroy();
+                console.log(`[DeviceService] Timeout sending reset command to device ${id}`);
+            });
+            
+            req.write(postData);
+            req.end();
+        } catch (error) {
+            // Don't fail device deletion if command sending fails
+            console.error(`[DeviceService] Error attempting to send reset command: ${error.message}`);
+        }
+        
+        // Delete the device from database
         const result = await pool.query('DELETE FROM public.devices WHERE id = $1', [id]);
         console.log(`[DeviceService] Delete result: ${result.rowCount} rows affected`);
         res.json({ message: 'Device deleted successfully' });
     } catch (error) {
         console.error('[DeviceService] Delete device error:', error);
         res.status(500).json({ error: 'Failed to delete device' });
+    }
+});
+
+// Reset device ID (clears device ID from Android TV storage)
+app.post('/devices/:id/reset-device-id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role, userId } = req.user;
+
+        // Check if user has permission
+        if (role !== 'super_admin') {
+            const deviceCheck = await pool.query(
+                `SELECT d.*, z.property_id 
+                 FROM public.devices d 
+                 JOIN zones z ON d.zone_id = z.id 
+                 WHERE d.id = $1`,
+                [id]
+            );
+
+            if (deviceCheck.rows.length === 0) {
+                return res.status(404).json({ error: 'Device not found' });
+            }
+
+            const propertyId = deviceCheck.rows[0].property_id;
+
+            if (role === 'property_admin') {
+                const accessCheck = await pool.query(
+                    'SELECT 1 FROM user_property_access WHERE user_id = $1 AND property_id = $2',
+                    [userId, propertyId]
+                );
+                if (accessCheck.rows.length === 0) {
+                    return res.status(403).json({ error: 'Permission denied' });
+                }
+            } else {
+                return res.status(403).json({ error: 'Permission denied' });
+            }
+        }
+
+        // Send reset_device_id command via API Gateway
+        try {
+            const apiGatewayUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+            const http = require('http');
+            const https = require('https');
+            const url = require('url');
+            
+            const gatewayUrl = new URL(`${apiGatewayUrl}/api/internal/send-device-command`);
+            const client = gatewayUrl.protocol === 'https:' ? https : http;
+            
+            const postData = JSON.stringify({
+                deviceId: id,
+                commandType: 'reset_device_id'
+            });
+            
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData)
+                },
+                timeout: 5000
+            };
+            
+            const req = client.request(gatewayUrl, options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => {
+                    if (res.statusCode === 200) {
+                        console.log(`[DeviceService] Reset command sent to device ${id}`);
+                    }
+                });
+            });
+            
+            req.on('error', (err) => {
+                console.error(`[DeviceService] Error sending reset command: ${err.message}`);
+            });
+            
+            req.on('timeout', () => {
+                req.destroy();
+                console.log(`[DeviceService] Timeout sending reset command to device ${id}`);
+            });
+            
+            req.write(postData);
+            req.end();
+        } catch (error) {
+            console.error(`[DeviceService] Error attempting to send reset command: ${error.message}`);
+            return res.status(500).json({ error: 'Failed to send reset command', details: error.message });
+        }
+
+        res.json({ message: 'Reset device ID command sent successfully' });
+    } catch (error) {
+        console.error('[DeviceService] Reset device ID error:', error);
+        res.status(500).json({ error: 'Failed to reset device ID' });
     }
 });
 

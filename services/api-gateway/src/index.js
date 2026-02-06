@@ -649,6 +649,37 @@ app.post('/api/internal/broadcast-log', (req, res) => {
   }
 });
 
+// Internal endpoint for services to send commands to devices via WebSocket
+// Used when device is deleted to reset device ID on Android TV
+app.post('/api/internal/send-device-command', (req, res) => {
+  try {
+    const { deviceId, commandType } = req.body;
+    
+    if (!deviceId || !commandType) {
+      return res.status(400).json({ error: 'deviceId and commandType are required' });
+    }
+    
+    const message = {
+      type: 'command',
+      command: commandType,
+      timestamp: Date.now()
+    };
+    
+    const sent = sendToDevice(deviceId, message);
+    
+    if (sent) {
+      console.log(`[Gateway] Command '${commandType}' sent to device ${deviceId} via internal endpoint`);
+    } else {
+      console.log(`[Gateway] Device ${deviceId} not connected, command '${commandType}' not sent`);
+    }
+    
+    res.json({ success: sent, deviceId, commandType });
+  } catch (error) {
+    console.error('[Gateway] Error in send-device-command endpoint:', error);
+    res.status(500).json({ error: 'Failed to send device command', details: error.message });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
