@@ -2,7 +2,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
-const { createAuditLogger } = require('../../shared/middleware/auditLogger');
+const { createAuditLogger } = require('./middleware/auditLogger');
 require('dotenv').config();
 
 const app = express();

@@ -3,7 +3,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
-const { createAuditLogger } = require('../../shared/middleware/auditLogger');
+const { createAuditLogger } = require('./middleware/auditLogger');
 require('dotenv').config();
 
 const app = express();
@@ -321,6 +321,15 @@ async function ensureSchema(retries = 10, delay = 3000) {
         }
     }
 }
+
+// Health check endpoint - must be available immediately (before DB connection)
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        service: 'device-service',
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Run schema check on startup
 ensureSchema();
@@ -1200,15 +1209,6 @@ app.get('/analytics/dashboard-stats', authenticateToken, async (req, res) => {
         console.error('Dashboard stats error:', error);
         res.status(500).json({ error: 'Failed to fetch dashboard statistics' });
     }
-});
-
-// Health check endpoint - must be available immediately
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'healthy',
-        service: 'device-service',
-        timestamp: new Date().toISOString()
-    });
 });
 
 // Temporary migration endpoint (remove after running once)

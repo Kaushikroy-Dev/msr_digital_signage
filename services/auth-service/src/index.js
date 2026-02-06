@@ -36,16 +36,24 @@ async function initializeAdmin() {
             console.log(`📡 [Initialization] Using existing demo tenant: ${tenantId}`);
         }
 
-        // 2. Ensure demo@example.com exists
+        // 2. Ensure demo@example.com exists or update password
         const demoUser = await pool.query('SELECT id FROM users WHERE email = $1', ['demo@example.com']);
         if (demoUser.rows.length === 0) {
             console.log('🌱 [Initialization] Creating demo@example.com user...');
-            const passwordHash = await bcrypt.hash('password123', 10);
+            const passwordHash = await bcrypt.hash('Test@123', 10);
             await pool.query(`
                 INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, role)
                 VALUES ($1, $2, $3, $4, $5, $6)
             `, [tenantId, 'demo@example.com', passwordHash, 'Demo', 'User', 'super_admin']);
-            console.log('✅ [Initialization] demo@example.com created with password123');
+            console.log('✅ [Initialization] demo@example.com created with Test@123');
+        } else {
+            // Update existing demo user password
+            console.log('🔄 [Initialization] Updating demo@example.com password to Test@123...');
+            const passwordHash = await bcrypt.hash('Test@123', 10);
+            await pool.query(`
+                UPDATE users SET password_hash = $1 WHERE email = $2
+            `, [passwordHash, 'demo@example.com']);
+            console.log('✅ [Initialization] demo@example.com password updated to Test@123');
         }
 
         // 3. Ensure admin@admin.com exists (for legacy support if needed)

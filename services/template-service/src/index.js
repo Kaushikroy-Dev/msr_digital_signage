@@ -3,7 +3,7 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
-const { createAuditLogger } = require('../../shared/middleware/auditLogger');
+const { createAuditLogger } = require('./middleware/auditLogger');
 require('dotenv').config();
 
 const app = express();

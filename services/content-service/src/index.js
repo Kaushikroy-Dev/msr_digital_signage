@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
-const { createAuditLogger } = require('../../shared/middleware/auditLogger');
+const { createAuditLogger } = require('./middleware/auditLogger');
 require('dotenv').config();
 
 const app = express();
