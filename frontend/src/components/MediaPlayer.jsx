@@ -151,12 +151,14 @@ export default function MediaPlayer({
                         <p>Display is Off</p>
                     </div>
                 ) : media.file_type === 'image' ? (
-                    <img
-                        src={mediaUrl}
-                        alt={media.name || media.original_name}
-                        className="media-content tv-media"
-                        onError={handleError}
-                    />
+                    <div className="media-stage">
+                        <img
+                            src={mediaUrl}
+                            alt={media.name || media.original_name}
+                            className="media-content tv-media"
+                            onError={handleError}
+                        />
+                    </div>
                 ) : media.file_type === 'video' ? (
                     <>
                         {loadError ? (
@@ -173,7 +175,7 @@ export default function MediaPlayer({
                                 <p style={{ fontSize: '14px', opacity: 0.7 }}>{loadError}</p>
                             </div>
                         ) : (
-                            <>
+                            <div className="media-stage">
                                 {isBuffering && (
                                     <div className="video-buffering-indicator">
                                         <div className="buffering-spinner"></div>
@@ -196,7 +198,7 @@ export default function MediaPlayer({
                                     playsInline
                                     muted={false}
                                 />
-                            </>
+                            </div>
                         )}
                     </>
                 ) : (

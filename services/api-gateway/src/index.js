@@ -442,11 +442,48 @@ app.use('/api/analytics/activity', createProxyMiddleware({
   pathRewrite: { '^/api/analytics': '/analytics' }
 }));
 
-// Proxy static uploads from content service
+// Proxy static uploads from content service - PUBLIC ACCESS (no auth required for player devices)
+// This allows player devices to access media files without authentication
 app.use('/uploads', createProxyMiddleware({
-  ...proxyOptions,
   target: services.content,
-  pathRewrite: { '^/uploads': '/uploads' }
+  changeOrigin: true,
+  logLevel: 'error',
+  pathRewrite: { '^/uploads': '/uploads' },
+  onError: (err, req, res) => {
+    console.error('Uploads proxy error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Media service unavailable' });
+    }
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    // Ensure CORS headers for cross-origin access
+    const origin = req.headers.origin;
+    if (isOriginAllowed(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
+    // Preserve Content-Type and other media-specific headers
+    const contentType = proxyRes.headers['content-type'];
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    }
+
+    // Enable range requests for video streaming
+    if (proxyRes.headers['accept-ranges']) {
+      res.setHeader('Accept-Ranges', proxyRes.headers['accept-ranges']);
+    }
+    if (proxyRes.headers['content-range']) {
+      res.setHeader('Content-Range', proxyRes.headers['content-range']);
+    }
+    if (proxyRes.headers['content-length']) {
+      res.setHeader('Content-Length', proxyRes.headers['content-length']);
+    }
+
+    // Cache headers for performance
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  },
+  timeout: 60000 // 60 second timeout for large media files
 }));
 
 // Migration endpoint - proxy to device-service
@@ -478,7 +515,7 @@ wss.on('connection', (ws, req) => {
         clients.set(deviceId, ws);
         console.log(`Device registered: ${deviceId}`);
         ws.send(JSON.stringify({ type: 'registered', deviceId }));
-        
+
         // If we also have playerId, link them together
         if (playerId) {
           // Update playerClients to point to same connection
@@ -492,7 +529,7 @@ wss.on('connection', (ws, req) => {
         playerClients.set(playerId, ws);
         console.log(`Player registered: ${playerId}`);
         ws.send(JSON.stringify({ type: 'registered_player', playerId }));
-        
+
         // If we also have deviceId, link them together
         if (deviceId) {
           clients.set(deviceId, ws);
@@ -578,12 +615,12 @@ function broadcastLog(tenantId, logEntry) {
         clients.delete(client);
       }
     });
-    
+
     // Clean up empty sets
     if (clients.size === 0) {
       logClients.delete(tenantId);
     }
-    
+
     if (sentCount > 0) {
       console.log(`Broadcasted log to ${sentCount} client(s) for tenant: ${tenantId}`);
     }
@@ -601,11 +638,11 @@ app.locals.broadcastLog = broadcastLog;
 app.post('/api/internal/notify-player', (req, res) => {
   try {
     const { playerId, deviceId, message } = req.body;
-    
+
     if (!playerId) {
       return res.status(400).json({ error: 'playerId is required' });
     }
-    
+
     const notification = {
       type: 'device_paired',
       deviceId: deviceId || null,
@@ -613,15 +650,15 @@ app.post('/api/internal/notify-player', (req, res) => {
       message: message || 'Device paired successfully',
       timestamp: Date.now()
     };
-    
+
     const sent = sendToPlayer(playerId, notification);
-    
+
     if (sent) {
       console.log(`[Gateway] Notification sent to player ${playerId} for device ${deviceId}`);
     } else {
       console.log(`[Gateway] Player ${playerId} not connected, notification not sent`);
     }
-    
+
     res.json({ success: sent, playerId, deviceId });
   } catch (error) {
     console.error('[Gateway] Error in notify-player endpoint:', error);
@@ -634,14 +671,14 @@ app.post('/api/internal/notify-player', (req, res) => {
 app.post('/api/internal/broadcast-log', (req, res) => {
   try {
     const { tenantId, logEntry } = req.body;
-    
+
     if (!tenantId || !logEntry) {
       return res.status(400).json({ error: 'tenantId and logEntry are required' });
     }
-    
+
     // Broadcast log to all subscribed clients for this tenant
     broadcastLog(tenantId, logEntry);
-    
+
     return res.json({ success: true, message: 'Log broadcasted' });
   } catch (error) {
     console.error('[Gateway] Error in broadcast-log endpoint:', error);
@@ -654,25 +691,25 @@ app.post('/api/internal/broadcast-log', (req, res) => {
 app.post('/api/internal/send-device-command', (req, res) => {
   try {
     const { deviceId, commandType } = req.body;
-    
+
     if (!deviceId || !commandType) {
       return res.status(400).json({ error: 'deviceId and commandType are required' });
     }
-    
+
     const message = {
       type: 'command',
       command: commandType,
       timestamp: Date.now()
     };
-    
+
     const sent = sendToDevice(deviceId, message);
-    
+
     if (sent) {
       console.log(`[Gateway] Command '${commandType}' sent to device ${deviceId} via internal endpoint`);
     } else {
       console.log(`[Gateway] Device ${deviceId} not connected, command '${commandType}' not sent`);
     }
-    
+
     res.json({ success: sent, deviceId, commandType });
   } catch (error) {
     console.error('[Gateway] Error in send-device-command endpoint:', error);
