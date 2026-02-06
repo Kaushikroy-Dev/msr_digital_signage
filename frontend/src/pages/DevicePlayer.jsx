@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api, { API_BASE_URL } from '../lib/api';
 import MediaPlayer from '../components/MediaPlayer';
@@ -12,16 +12,17 @@ import { initTVRemote, initTizenRemote, initWebOSRemote } from '../utils/tvRemot
 import { applyPlatformOptimizations, initOptimizations } from '../utils/platformOptimizations';
 import { initErrorHandling, log } from '../utils/platformLogger';
 import { cacheMediaUrls } from '../utils/offlineCache';
-import { saveDeviceIdToNative } from '../utils/webViewUtils';
+import { saveDeviceIdToNative, getDeviceId as getDeviceIdFromStorage } from '../utils/webViewUtils';
 import './DevicePlayer.css';
 
 export default function DevicePlayer() {
     const { deviceId: urlDeviceId } = useParams();
     const [searchParams] = useSearchParams();
-    
+    const navigate = useNavigate();
+
     // Read player_id from URL query params (for Android TV app)
     const playerIdFromQuery = searchParams.get('player_id');
-    
+
     // Only use localStorage deviceId if no URL param and we're not in pairing mode
     const [deviceId, setDeviceId] = useState(urlDeviceId || null);
     const [playerId, setPlayerId] = useState(playerIdFromQuery || null);
@@ -32,6 +33,22 @@ export default function DevicePlayer() {
     const [hasInitialContent, setHasInitialContent] = useState(false);
     const [pairingError, setPairingError] = useState(null);
     const [initStatus, setInitStatus] = useState(null); // 'UNPAIRED', 'ACTIVE', 'DISABLED'
+
+    // Check for saved deviceId and auto-redirect if found (when accessing /player without deviceId)
+    useEffect(() => {
+        // Only run this check if:
+        // 1. No deviceId in URL
+        // 2. No playerId in query params (not Android TV flow)
+        // 3. Not already in pairing mode
+        if (!urlDeviceId && !playerIdFromQuery && !pairingCode) {
+            const savedDeviceId = getDeviceIdFromStorage();
+            if (savedDeviceId) {
+                console.log('[Player] Found saved deviceId, redirecting to:', savedDeviceId);
+                // Redirect to /player/{deviceId}
+                navigate(`/player/${savedDeviceId}`, { replace: true });
+            }
+        }
+    }, [urlDeviceId, playerIdFromQuery, pairingCode, navigate]);
 
     // Persist deviceId to localStorage when we get it from URL
     useEffect(() => {
@@ -60,7 +77,7 @@ export default function DevicePlayer() {
         if (initData) {
             console.log('[Player] Device init result:', initData);
             setInitStatus(initData.status);
-            
+
             if (initData.pairing_required) {
                 // Device needs pairing
                 setDeviceId(null);
@@ -140,7 +157,7 @@ export default function DevicePlayer() {
         if (deviceId) {
             // Always save to localStorage (for browser fallback)
             localStorage.setItem('ds_device_id', deviceId);
-            
+
             // Save to native app if running in WebView
             saveDeviceIdToNative(deviceId);
         }
@@ -215,7 +232,7 @@ export default function DevicePlayer() {
                 ws.onopen = () => {
                     console.log('[Player] Connected to Gateway WS');
                     reconnectAttempts = 0; // Reset on successful connection
-                    
+
                     // Register with playerId first if deviceId not available
                     if (playerId && !deviceId) {
                         ws.send(JSON.stringify({ type: 'register_player', playerId }));
@@ -234,22 +251,22 @@ export default function DevicePlayer() {
                         // Handle device_paired notification
                         if (data.type === 'device_paired' && data.deviceId) {
                             console.log('[Player] Device paired notification received:', data.deviceId);
-                            
+
                             // Update state
                             setDeviceId(data.deviceId);
                             localStorage.setItem('ds_device_id', data.deviceId);
-                            
+
                             // Update URL to include deviceId
                             const newUrl = `/player/${data.deviceId}`;
                             window.history.pushState({}, '', newUrl);
                             console.log('[Player] URL updated to:', newUrl);
-                            
+
                             // Re-register WebSocket with deviceId
                             if (ws && ws.readyState === WebSocket.OPEN) {
                                 ws.send(JSON.stringify({ type: 'register', deviceId: data.deviceId }));
                                 console.log('[Player] Re-registered with deviceId:', data.deviceId);
                             }
-                            
+
                             // Content will automatically refetch due to deviceId change
                             return;
                         }
@@ -455,7 +472,7 @@ export default function DevicePlayer() {
                     id: item.content_id || item.id,
                     url: item.url
                 }));
-            
+
             if (mediaItems.length > 0) {
                 cacheMediaUrls(mediaItems, API_BASE_URL).catch(err => {
                     console.warn('[Player] Failed to cache media URLs:', err);
@@ -473,15 +490,15 @@ export default function DevicePlayer() {
     // Video preloading: Preload next 1-2 videos while current video plays
     useEffect(() => {
         if (!playerData?.items || !isPlaying) return;
-        
+
         const preloadedVideos = [];
         const maxPreload = 2; // Preload next 2 items
-        
+
         // Preload next videos (up to maxPreload items)
         for (let i = 1; i <= maxPreload; i++) {
             const nextIndex = (currentIndex + i) % playerData.items.length;
             const nextItem = playerData.items[nextIndex];
-            
+
             // Only preload videos (not images or templates)
             if (nextItem?.file_type === 'video' && nextItem?.url) {
                 const preloadVideo = document.createElement('video');
@@ -493,15 +510,15 @@ export default function DevicePlayer() {
                 preloadVideo.style.height = '1px';
                 preloadVideo.style.opacity = '0';
                 preloadVideo.style.pointerEvents = 'none';
-                
+
                 // Add to document for preloading
                 document.body.appendChild(preloadVideo);
                 preloadedVideos.push(preloadVideo);
-                
+
                 console.log(`[Player] Preloading next video ${i}: ${nextItem.name || nextItem.url}`);
             }
         }
-        
+
         // Cleanup function: remove preloaded videos when component unmounts or dependencies change
         return () => {
             preloadedVideos.forEach(video => {
