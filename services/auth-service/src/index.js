@@ -1204,6 +1204,75 @@ app.get('/users/:id/zone-access', async (req, res) => {
     }
 });
 
+// ============================================
+// ADMIN PASSWORD RESET ENDPOINT (Temporary)
+// ============================================
+// This endpoint allows resetting passwords without authentication
+// Protected by ADMIN_RESET_KEY environment variable
+// Usage: POST /auth/admin/reset-password
+// Body: { email: "user@example.com", newPassword: "NewPass@123", adminKey: "your-admin-key" }
+app.post('/admin/reset-password', async (req, res) => {
+    try {
+        const { email, newPassword, adminKey } = req.body;
+
+        // Verify admin key
+        const expectedKey = process.env.ADMIN_RESET_KEY || 'CHANGE_THIS_IN_PRODUCTION';
+        if (adminKey !== expectedKey) {
+            return res.status(401).json({ error: 'Invalid admin key' });
+        }
+
+        if (!email || !newPassword) {
+            return res.status(400).json({ error: 'Email and newPassword are required' });
+        }
+
+        // Validate password strength
+        const passwordValidation = validatePassword(newPassword);
+        if (!passwordValidation.valid) {
+            return res.status(400).json({ error: passwordValidation.error });
+        }
+
+        // Check if user exists
+        const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const userId = userResult.rows[0].id;
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+
+            // Hash new password
+            const passwordHash = await bcrypt.hash(newPassword, 10);
+
+            // Update password
+            await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
+
+            // Clear password history (allows reuse of this password)
+            await client.query('DELETE FROM password_history WHERE user_id = $1', [userId]);
+
+            // Save new password to history
+            await savePasswordHistory(userId, passwordHash, client);
+
+            await client.query('COMMIT');
+
+            res.json({
+                message: 'Password reset successfully',
+                email: email
+            });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('Admin password reset error:', error);
+        res.status(500).json({ error: 'Failed to reset password' });
+    }
+});
+
 // Middleware to authenticate JWT token
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
