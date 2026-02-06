@@ -183,17 +183,56 @@ app.use('/uploads', express.static(UPLOAD_DIR, {
     etag: true, // Enable ETag for conditional requests
     lastModified: true, // Enable Last-Modified headers
     setHeaders: (res, path) => {
-        // Videos: long cache with range request support
-        if (path.match(/\.(mp4|webm|mov|avi|m4v)$/i)) {
+        // Videos: long cache with range request support + explicit Content-Type (fixes ORB error)
+        if (path.match(/\.(mp4)$/i)) {
+            res.setHeader('Content-Type', 'video/mp4');
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
             res.setHeader('Accept-Ranges', 'bytes'); // Enable range requests for video streaming
         }
-        // Images: long cache
-        else if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+        else if (path.match(/\.(webm)$/i)) {
+            res.setHeader('Content-Type', 'video/webm');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        else if (path.match(/\.(mov)$/i)) {
+            res.setHeader('Content-Type', 'video/quicktime');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        else if (path.match(/\.(avi)$/i)) {
+            res.setHeader('Content-Type', 'video/x-msvideo');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        else if (path.match(/\.(m4v)$/i)) {
+            res.setHeader('Content-Type', 'video/x-m4v');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        // Images: long cache + Content-Type
+        else if (path.match(/\.(jpg|jpeg)$/i)) {
+            res.setHeader('Content-Type', 'image/jpeg');
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
-        // Thumbnails: shorter cache (7 days)
+        else if (path.match(/\.(png)$/i)) {
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        else if (path.match(/\.(gif)$/i)) {
+            res.setHeader('Content-Type', 'image/gif');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        else if (path.match(/\.(webp)$/i)) {
+            res.setHeader('Content-Type', 'image/webp');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        else if (path.match(/\.(svg)$/i)) {
+            res.setHeader('Content-Type', 'image/svg+xml');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        // Thumbnails: shorter cache (7 days) + Content-Type
         else if (path.includes('thumbnails')) {
+            res.setHeader('Content-Type', 'image/jpeg');
             res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
         }
         // Other files: default cache
@@ -1196,17 +1235,56 @@ app.use('/uploads', express.static(UPLOAD_DIR, {
     etag: true, // Enable ETag for conditional requests
     lastModified: true, // Enable Last-Modified headers
     setHeaders: (res, path) => {
-        // Videos: long cache with range request support
-        if (path.match(/\.(mp4|webm|mov|avi|m4v)$/i)) {
+        // Videos: long cache with range request support + explicit Content-Type (fixes ORB error)
+        if (path.match(/\.(mp4)$/i)) {
+            res.setHeader('Content-Type', 'video/mp4');
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
             res.setHeader('Accept-Ranges', 'bytes'); // Enable range requests for video streaming
         }
-        // Images: long cache
-        else if (path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+        else if (path.match(/\.(webm)$/i)) {
+            res.setHeader('Content-Type', 'video/webm');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        else if (path.match(/\.(mov)$/i)) {
+            res.setHeader('Content-Type', 'video/quicktime');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        else if (path.match(/\.(avi)$/i)) {
+            res.setHeader('Content-Type', 'video/x-msvideo');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        else if (path.match(/\.(m4v)$/i)) {
+            res.setHeader('Content-Type', 'video/x-m4v');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.setHeader('Accept-Ranges', 'bytes');
+        }
+        // Images: long cache + Content-Type
+        else if (path.match(/\.(jpg|jpeg)$/i)) {
+            res.setHeader('Content-Type', 'image/jpeg');
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
-        // Thumbnails: shorter cache (7 days)
+        else if (path.match(/\.(png)$/i)) {
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        else if (path.match(/\.(gif)$/i)) {
+            res.setHeader('Content-Type', 'image/gif');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        else if (path.match(/\.(webp)$/i)) {
+            res.setHeader('Content-Type', 'image/webp');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        else if (path.match(/\.(svg)$/i)) {
+            res.setHeader('Content-Type', 'image/svg+xml');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        // Thumbnails: shorter cache (7 days) + Content-Type
         else if (path.includes('thumbnails')) {
+            res.setHeader('Content-Type', 'image/jpeg');
             res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
         }
         // Other files: default cache

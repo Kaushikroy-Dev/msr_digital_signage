@@ -248,10 +248,43 @@ const proxyOptions = {
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length, Accept-Ranges, Content-Range');
+    }
+
+    // CRITICAL: Preserve Content-Type header for media files (especially videos)
+    // This prevents ORB (Opaque Response Blocking) errors in WebView/Android TV
+    const requestPath = req.url || req.path || '';
+    if (requestPath.includes('/uploads/')) {
+      const contentType = proxyRes.headers['content-type'];
+      if (contentType) {
+        // Preserve the Content-Type from the upstream service
+        res.setHeader('Content-Type', contentType);
+      } else {
+        // Fallback: Set Content-Type based on file extension if not present
+        // This ensures ORB doesn't block the response
+        if (requestPath.match(/\.mp4$/i)) {
+          res.setHeader('Content-Type', 'video/mp4');
+        } else if (requestPath.match(/\.webm$/i)) {
+          res.setHeader('Content-Type', 'video/webm');
+        } else if (requestPath.match(/\.mov$/i)) {
+          res.setHeader('Content-Type', 'video/quicktime');
+        } else if (requestPath.match(/\.avi$/i)) {
+          res.setHeader('Content-Type', 'video/x-msvideo');
+        } else if (requestPath.match(/\.m4v$/i)) {
+          res.setHeader('Content-Type', 'video/x-m4v');
+        } else if (requestPath.match(/\.(jpg|jpeg)$/i)) {
+          res.setHeader('Content-Type', 'image/jpeg');
+        } else if (requestPath.match(/\.png$/i)) {
+          res.setHeader('Content-Type', 'image/png');
+        } else if (requestPath.match(/\.gif$/i)) {
+          res.setHeader('Content-Type', 'image/gif');
+        } else if (requestPath.match(/\.webp$/i)) {
+          res.setHeader('Content-Type', 'image/webp');
+        }
+      }
     }
 
     // BROADCAST LOGIC: If this is a command request, broadcast it via WebSocket
-    const requestPath = req.url || req.path || '';
     if (req.method === 'POST' && requestPath.includes('/commands')) {
       // Match both /api/devices/:id/commands and /devices/:id/commands (after path rewrite)
       // Also handle /devices/devices/:id/commands (legacy path)
