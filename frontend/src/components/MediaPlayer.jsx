@@ -196,6 +196,8 @@ export default function MediaPlayer({
                                     playsInline
                                     muted={false}
                                 />
+                            </>
+                        )}
                     </>
                 ) : (
                     <div className="unsupported-media">
