@@ -257,9 +257,21 @@ if (USE_S3) {
 
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'digital-signage-media';
 const rawCdnUrl = process.env.S3_CDN_URL || `https://${BUCKET_NAME}.s3.amazonaws.com`;
-const CDN_URL = (rawCdnUrl && !/^https?:\/\//i.test(rawCdnUrl))
-    ? `https://${rawCdnUrl.replace(/^\/+|\/+$/g, '')}`
-    : (rawCdnUrl || '').replace(/\/+$/, '');
+// Normalize CDN URL: add https:// if missing, remove trailing slashes
+let CDN_URL = rawCdnUrl || '';
+if (CDN_URL && !/^https?:\/\//i.test(CDN_URL)) {
+    // No protocol found, add https://
+    CDN_URL = `https://${CDN_URL}`;
+}
+// Remove trailing slashes
+CDN_URL = CDN_URL.replace(/\/+$/, '');
+
+console.log('[S3] CDN Configuration:', {
+    rawCdnUrl,
+    normalizedCdnUrl: CDN_URL,
+    bucketName: BUCKET_NAME,
+    useS3: USE_S3
+});
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
