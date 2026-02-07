@@ -18,6 +18,7 @@ import {
 import api from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import './Organization.css';
+import '../styles/premium.css';
 
 export default function Organization() {
     const { user } = useAuthStore();
@@ -427,53 +428,66 @@ export default function Organization() {
             {/* Modals */}
             {isAddingProperty && (
                 <div className="modal-overlay glass">
-                    <div className="modal-content premium-modal">
+                    <div className="modal-content premium-modal add-site-modal">
+                        <div className="modal-badge">
+                            ✨ New Site
+                        </div>
                         <div className="modal-header">
                             <div>
-                                <h2>Add New Site</h2>
-                                <p>Define a property or organization location</p>
+                                <h2 className="modal-heading">Create Your Property</h2>
+                                <p className="modal-subtitle">Set up a new location for your digital signage network</p>
                             </div>
                         </div>
                         <form onSubmit={(e) => { e.preventDefault(); createPropertyMutation.mutate(propertyForm); }}>
-                            <div className="form-group">
-                                <label>Site Name</label>
-                                <input
-                                    type="text"
-                                    className="premium-input-field"
-                                    value={propertyForm.name}
-                                    onChange={(e) => setPropertyForm({ ...propertyForm, name: e.target.value })}
-                                    placeholder="e.g. London Office, Mumbai Hub"
-                                    required
-                                />
-                            </div>
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>City</label>
+                            <div className="neuro-form-group">
+                                <label className="input-label">Property Name</label>
+                                <div className="input-with-icon">
+                                    <Building2 className="input-icon" size={20} />
                                     <input
                                         type="text"
-                                        className="premium-input-field"
-                                        value={propertyForm.city}
-                                        onChange={(e) => setPropertyForm({ ...propertyForm, city: e.target.value })}
+                                        className="neuro-input"
+                                        value={propertyForm.name}
+                                        onChange={(e) => setPropertyForm({ ...propertyForm, name: e.target.value })}
+                                        placeholder="e.g. London Office, Mumbai Hub"
+                                        required
                                     />
                                 </div>
-                                <div className="form-group">
-                                    <label>Timezone</label>
-                                    <select
-                                        className="premium-select-field"
-                                        value={propertyForm.timezone}
-                                        onChange={(e) => setPropertyForm({ ...propertyForm, timezone: e.target.value })}
-                                    >
-                                        <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                                        <option value="Europe/London">Europe/London (GMT)</option>
-                                        <option value="America/New_York">America/New_York (EST)</option>
-                                        <option value="UTC">UTC</option>
-                                    </select>
+                            </div>
+                            <div className="neuro-form-row">
+                                <div className="neuro-form-group">
+                                    <label className="input-label">City</label>
+                                    <div className="input-with-icon">
+                                        <MapPin className="input-icon" size={20} />
+                                        <input
+                                            type="text"
+                                            className="neuro-input"
+                                            value={propertyForm.city}
+                                            onChange={(e) => setPropertyForm({ ...propertyForm, city: e.target.value })}
+                                            placeholder="Enter city"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="neuro-form-group">
+                                    <label className="input-label">Timezone</label>
+                                    <div className="input-with-icon">
+                                        <Activity className="input-icon" size={20} />
+                                        <select
+                                            className="neuro-input"
+                                            value={propertyForm.timezone}
+                                            onChange={(e) => setPropertyForm({ ...propertyForm, timezone: e.target.value })}
+                                        >
+                                            <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                                            <option value="Europe/London">Europe/London (GMT)</option>
+                                            <option value="America/New_York">America/New_York (EST)</option>
+                                            <option value="UTC">UTC</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                             <div className="modal-actions">
-                                <button type="button" className="btn btn-ghost" onClick={() => setIsAddingProperty(false)}>Cancel</button>
-                                <button type="submit" className="btn btn-primary btn-premium" disabled={createPropertyMutation.isPending}>
-                                    {createPropertyMutation.isPending ? 'Creating...' : 'Create Site'}
+                                <button type="button" className="neuro-button-secondary" onClick={() => setIsAddingProperty(false)}>Cancel</button>
+                                <button type="submit" className="glass-button-primary" disabled={createPropertyMutation.isPending}>
+                                    {createPropertyMutation.isPending ? 'Creating...' : 'Create Site →'}
                                 </button>
                             </div>
                         </form>
@@ -483,29 +497,35 @@ export default function Organization() {
 
             {isAddingArea && (
                 <div className="modal-overlay glass">
-                    <div className="modal-content premium-modal">
+                    <div className="modal-content premium-modal add-site-modal">
+                        <div className="modal-badge">
+                            ✨ New Area
+                        </div>
                         <div className="modal-header">
                             <div>
-                                <h2>Add New Area</h2>
-                                <p>Define a zone or section within the property</p>
+                                <h2 className="modal-heading">Add New Area</h2>
+                                <p className="modal-subtitle">Define a zone or section within the property</p>
                             </div>
                         </div>
                         <form onSubmit={(e) => { e.preventDefault(); createAreaMutation.mutate({ propertyId: isAddingArea, data: areaForm }); }}>
-                            <div className="form-group">
-                                <label>Area Name</label>
-                                <input
-                                    type="text"
-                                    className="premium-input-field"
-                                    value={areaForm.name}
-                                    onChange={(e) => setAreaForm({ ...areaForm, name: e.target.value })}
-                                    placeholder="e.g. Main Lobby, Cafeteria"
-                                    required
-                                />
+                            <div className="neuro-form-group">
+                                <label className="input-label">Area Name</label>
+                                <div className="input-with-icon">
+                                    <Grid3x3 className="input-icon" size={20} />
+                                    <input
+                                        type="text"
+                                        className="neuro-input"
+                                        value={areaForm.name}
+                                        onChange={(e) => setAreaForm({ ...areaForm, name: e.target.value })}
+                                        placeholder="e.g. Main Lobby, Cafeteria"
+                                        required
+                                    />
+                                </div>
                             </div>
                             <div className="modal-actions">
-                                <button type="button" className="btn btn-ghost" onClick={() => setIsAddingArea(null)}>Cancel</button>
-                                <button type="submit" className="btn btn-primary btn-premium" disabled={createAreaMutation.isPending}>
-                                    {createAreaMutation.isPending ? 'Creating...' : 'Create Area'}
+                                <button type="button" className="neuro-button-secondary" onClick={() => setIsAddingArea(null)}>Cancel</button>
+                                <button type="submit" className="glass-button-primary" disabled={createAreaMutation.isPending}>
+                                    {createAreaMutation.isPending ? 'Creating...' : 'Create Area →'}
                                 </button>
                             </div>
                         </form>
@@ -515,17 +535,19 @@ export default function Organization() {
 
             {isAddingDevice && (
                 <div className="modal-overlay glass">
-                    <div className="modal-content premium-modal-dark">
-                        <div className="modal-header text-center">
-                            <h2>Connect New Screen</h2>
-                            <p>Enter the 8-digit registration code displayed on your screen, or add directly without pairing</p>
+                    <div className="modal-content premium-modal pair-device-modal">
+                        <div className="device-icon-neuro">
+                            <Monitor size={40} />
                         </div>
-                        <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                            <p style={{ marginBottom: '12px', fontSize: '14px', color: 'rgba(255,255,255,0.7)' }}>
-                                Need to add multiple devices quickly?
-                            </p>
+                        <div className="modal-header text-center">
+                            <h2 className="modal-heading" style={{ textAlign: 'center' }}>Pair Your Device</h2>
+                            <p className="modal-subtitle" style={{ textAlign: 'center' }}>Enter the 8-digit pairing code displayed on your screen</p>
+                        </div>
+                        
+                        <div style={{ marginBottom: '24px', textAlign: 'center' }}>
                             <button 
                                 type="button"
+                                className="filter-pill"
                                 onClick={async () => {
                                     const name = prompt('Enter device name:');
                                     if (name) {
@@ -545,57 +567,53 @@ export default function Organization() {
                                         }
                                     }
                                 }}
-                                style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    background: 'rgba(59, 130, 246, 0.2)',
-                                    color: '#60a5fa',
-                                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    fontWeight: '500'
-                                }}
                             >
-                                + Add Device Directly (Skip Pairing Code)
+                                + Add Device Directly (Skip Pairing)
                             </button>
-                            <p style={{ marginTop: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
-                                Use this to quickly add multiple devices to the same area
-                            </p>
                         </div>
+
                         <form onSubmit={handleRegisterDevice}>
-                            <div className="pairing-entry">
+                            <div className="pairing-entry" style={{ background: 'transparent', padding: 0 }}>
                                 <div className="pairing-inputs-row">
                                     {pairingCode.map((char, i) => (
-                                        <input
-                                            key={i}
-                                            id={`code-input-${i}`}
-                                            type="text"
-                                            className="pairing-box"
-                                            value={char}
-                                            maxLength={1}
-                                            onChange={(e) => handleCodeChange(i, e.target.value)}
-                                            autoComplete="off"
-                                        />
+                                        <>
+                                            <input
+                                                key={i}
+                                                id={`code-input-${i}`}
+                                                type="text"
+                                                className={`pairing-box ${char ? 'filled' : ''}`}
+                                                value={char}
+                                                maxLength={1}
+                                                onChange={(e) => handleCodeChange(i, e.target.value)}
+                                                autoComplete="off"
+                                            />
+                                            {i === 3 && <div className="code-separator">-</div>}
+                                        </>
                                     ))}
                                 </div>
                             </div>
-                            <div className="form-group-spaced">
-                                <label>Screen Identity Name</label>
-                                <input
-                                    type="text"
-                                    className="premium-input-field light"
-                                    value={deviceForm.name}
-                                    onChange={(e) => setDeviceForm({ ...deviceForm, name: e.target.value })}
-                                    placeholder="e.g. Entrance OLED Left"
-                                    required
-                                />
+                            <div className="neuro-form-group">
+                                <label className="input-label">Device Name</label>
+                                <div className="input-with-icon">
+                                    <MonitorSmartphone className="input-icon" size={20} />
+                                    <input
+                                        type="text"
+                                        className="neuro-input"
+                                        value={deviceForm.name}
+                                        onChange={(e) => setDeviceForm({ ...deviceForm, name: e.target.value })}
+                                        placeholder="e.g. Entrance OLED Left"
+                                        required
+                                    />
+                                </div>
                             </div>
                             <div className="modal-actions center">
-                                <button type="button" className="btn btn-dark-ghost" onClick={() => setIsAddingDevice(null)}>Cancel</button>
-                                <button type="submit" className="btn btn-success btn-premium" disabled={claimDeviceMutation.isPending}>
-                                    {claimDeviceMutation.isPending ? 'Activating...' : 'Activate Screen Now'}
+                                <button type="button" className="neuro-button-secondary" onClick={() => setIsAddingDevice(null)}>Cancel</button>
+                                <button type="submit" className="glass-button-primary" disabled={claimDeviceMutation.isPending}>
+                                    {claimDeviceMutation.isPending ? 'Connecting...' : 'Connect Device →'}
                                 </button>
+                            </div>
+                            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                                <a href="#" style={{ color: '#718096', fontSize: '14px', textDecoration: 'none' }}>Need help? Contact support →</a>
                             </div>
                         </form>
                     </div>

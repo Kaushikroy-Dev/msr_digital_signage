@@ -194,9 +194,9 @@ export default function Playlists() {
         onSuccess: () => queryClient.invalidateQueries(['playlist-items'])
     });
 
-    const updateItemDurationMutation = useMutation({
-        mutationFn: async ({ itemId, duration }) => {
-            await api.put(`/schedules/playlists/${selectedPlaylist.id}/items/${itemId}`, { duration });
+    const updateItemMutation = useMutation({
+        mutationFn: async ({ itemId, data }) => {
+            await api.put(`/schedules/playlists/${selectedPlaylist.id}/items/${itemId}`, data);
         },
         onSuccess: () => queryClient.invalidateQueries(['playlist-items'])
     });
@@ -378,9 +378,23 @@ export default function Playlists() {
                                                 type="number"
                                                 className="duration-input"
                                                 value={(item.duration_ms || item.duration_seconds * 1000) / 1000}
-                                                onChange={(e) => updateItemDurationMutation.mutate({ itemId: item.id, duration: parseInt(e.target.value) })}
+                                                onChange={(e) => updateItemMutation.mutate({ itemId: item.id, data: { duration: parseInt(e.target.value) * 1000 } })}
                                             />
                                             <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>sec</span>
+                                        </div>
+                                        <div className="row-options" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }} title="Play in loop">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={item.play_in_loop !== false} 
+                                                    onChange={(e) => updateItemMutation.mutate({
+                                                        itemId: item.id,
+                                                        data: { play_in_loop: e.target.checked }
+                                                    })}
+                                                    style={{ width: '16px', height: '16px' }}
+                                                />
+                                                Loop
+                                            </label>
                                         </div>
                                         <div className="row-actions">
                                             <button className="btn-row-action delete" onClick={() => {

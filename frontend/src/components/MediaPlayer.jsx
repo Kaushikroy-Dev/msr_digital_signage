@@ -195,8 +195,16 @@ export default function MediaPlayer({
     };
 
     // Video: respect playlist duration_seconds – advance after N seconds even if video is longer
+    // Use ref for onComplete to avoid re-triggering effect when parent re-renders
+    const onCompleteRef = useRef(onComplete);
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+    }, [onComplete]);
+
     useEffect(() => {
         const effectiveSec = (duration != null && duration > 0) ? duration : 5;
+        // console.log(`[MediaPlayer] render effect. url=${media?.url}, type=${media?.file_type}, autoPlay=${autoPlay}, dur=${effectiveSec}`);
+
         if (media?.file_type !== 'video' || !autoPlay || effectiveSec <= 0) {
             return;
         }
@@ -206,8 +214,8 @@ export default function MediaPlayer({
             if (videoRef.current) {
                 videoRef.current.pause();
             }
-            if (onComplete) {
-                onComplete();
+            if (onCompleteRef.current) {
+                onCompleteRef.current();
             }
         }, durationMs);
         return () => {
@@ -216,7 +224,7 @@ export default function MediaPlayer({
                 videoDurationTimerRef.current = null;
             }
         };
-    }, [media?.url, media?.file_type, autoPlay, duration, onComplete]);
+    }, [media?.url, media?.file_type, autoPlay, duration]);
 
     // Reset error, retry count and image retry key when media changes
     useEffect(() => {

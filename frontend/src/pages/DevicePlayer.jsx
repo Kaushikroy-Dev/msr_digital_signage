@@ -34,6 +34,7 @@ export default function DevicePlayer() {
     const [hasInitialContent, setHasInitialContent] = useState(false);
     const [pairingError, setPairingError] = useState(null);
     const [initStatus, setInitStatus] = useState(null); // 'UNPAIRED', 'ACTIVE', 'DISABLED'
+    const [playedItems, setPlayedItems] = useState(new Set());
 
     // Check for saved deviceId and auto-redirect if found (when accessing /player without deviceId)
     useEffect(() => {
@@ -548,9 +549,46 @@ export default function DevicePlayer() {
     }, [playerData, API_BASE_URL]);
 
     const handleMediaComplete = () => {
-        if (!playerData?.items) return;
-        const nextIndex = (currentIndex + 1) % playerData.items.length;
-        setCurrentIndex(nextIndex);
+        if (!playerData?.items || playerData.items.length === 0) return;
+
+        // Mark current item as played
+        const currentItem = playerData.items[currentIndex];
+        if (currentItem) {
+            setPlayedItems(prev => {
+                const newSet = new Set(prev);
+                newSet.add(currentItem.id); 
+                return newSet;
+            });
+        }
+
+        // Find next valid item
+        let nextIndex = (currentIndex + 1) % playerData.items.length;
+        let attempts = 0;
+        const maxAttempts = playerData.items.length;
+
+        // Loop to find next item that should play:
+        // 1. If item.play_in_loop is true (default), play it.
+        // 2. If item.play_in_loop is false, only play if NOT in playedItems.
+        while (attempts < maxAttempts) {
+            const item = playerData.items[nextIndex];
+            const shouldPlay = item.play_in_loop !== false || !playedItems.has(item.id);
+
+            if (shouldPlay) {
+                setCurrentIndex(nextIndex);
+                return;
+            }
+
+            nextIndex = (nextIndex + 1) % playerData.items.length;
+            attempts++;
+        }
+
+        // If no items found (all 'play once' items have been played), reset playedItems and loop again?
+        // Or if there are loop items, we wouldn't be here (attempts < maxAttempts would catch them).
+        // If we fall through, it means ALL items are play_in_loop=false AND played.
+        // In this case, we reset to allow re-playing (standard loop behavior fallback).
+        console.log('[Player] All items finished loop cycle. Resetting play history.');
+        setPlayedItems(new Set());
+        setCurrentIndex(0); // Start from beginning
     };
 
     // Pairing Mode UI

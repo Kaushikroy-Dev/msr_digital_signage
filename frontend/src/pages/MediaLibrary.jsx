@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore';
 import PropertyZoneSelector from '../components/PropertyZoneSelector';
 import ContentShareModal from '../components/ContentShareModal';
 import './MediaLibrary.css';
+import '../styles/premium.css';
 
 export default function MediaLibrary() {
     const { user } = useAuthStore();
@@ -17,6 +18,26 @@ export default function MediaLibrary() {
     const [selectedZoneId, setSelectedZoneId] = useState('');
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [sharingAsset, setSharingAsset] = useState(null);
+    const [uploadProgress, setUploadProgress] = useState(0);
+
+    // Simulated progress bar for upload
+    useEffect(() => {
+        let interval;
+        if (uploadMutation.isPending) {
+            setUploadProgress(0);
+            interval = setInterval(() => {
+                setUploadProgress((prev) => {
+                    if (prev >= 90) return 90;
+                    return prev + Math.random() * 5;
+                });
+            }, 200);
+        } else {
+            setUploadProgress(100);
+            const timeout = setTimeout(() => setUploadProgress(0), 1000);
+            return () => clearTimeout(timeout);
+        }
+        return () => clearInterval(interval);
+    }, [uploadMutation.isPending]);
 
     // Auto-select property/zone for property_admin and zone_admin
     useEffect(() => {
@@ -248,21 +269,24 @@ export default function MediaLibrary() {
 
             <div className="media-toolbar">
                 <div className="media-search">
-                    <Search size={18} />
-                    <input
-                        type="text"
-                        placeholder="Search media..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="input"
-                    />
+                    <div className="input-with-icon" style={{ width: '100%' }}>
+                        <Search className="input-icon" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search media..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="neuro-input"
+                            style={{ paddingLeft: '48px' }}
+                        />
+                    </div>
                 </div>
 
-                <div className="media-filters">
+                <div className="filter-pills">
                     {['all', 'image', 'video', 'document'].map((type) => (
                         <button
                             key={type}
-                            className={`filter-btn ${filter === type ? 'active' : ''}`}
+                            className={`filter-pill ${filter === type ? 'active' : ''}`}
                             onClick={() => setFilter(type)}
                         >
                             {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -272,13 +296,45 @@ export default function MediaLibrary() {
             </div>
 
             {canManageMedia && (
-                <div {...getRootProps()} className={`upload-zone ${isDragActive ? 'active' : ''}`}>
-                    <input {...getInputProps()} />
-                    <Upload size={48} />
-                    <h3>Drop files here or click to upload</h3>
-                    <p>Supports: Images, Videos, PDF, PowerPoint</p>
-                    {uploadMutation.isPending && <p className="uploading">Uploading...</p>}
-                </div>
+                <>
+                    <div {...getRootProps()} className={`upload-zone-premium ${isDragActive ? 'drag-over' : ''}`}>
+                        <input {...getInputProps()} />
+                        <div className="upload-icon-premium">
+                            <Upload size={32} color="white" />
+                        </div>
+                        <h3 className="upload-text">Drag & drop files here</h3>
+                        <p className="upload-subtext">or click to browse</p>
+                        <p className="upload-subtext" style={{ marginTop: '16px', opacity: 0.7 }}>
+                            Supports: Images, Videos, PDF, PowerPoint • Max 500MB per file
+                        </p>
+                    </div>
+
+                    {uploadMutation.isPending && (
+                        <div className="upload-progress-card-premium">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                <div style={{ fontSize: '32px' }}>
+                                    {getFileIcon('video')} {/* Fallback icon */}
+                                </div>
+                                <div className="progress-bar-container">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Uploading media...</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{Math.round(uploadProgress)}%</span>
+                                    </div>
+                                    <div className="progress-bar-premium">
+                                        <div 
+                                            className="progress-bar-fill" 
+                                            style={{ width: `${uploadProgress}%` }}
+                                        ></div>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                        <span>Just a moment...</span>
+                                        <span>-- MB/s</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </>
             )}
 
             {isLoading ? (
