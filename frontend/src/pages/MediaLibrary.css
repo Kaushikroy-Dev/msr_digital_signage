@@ -54,23 +54,18 @@
 }
 
 .media-card {
-    background: var(--neuro-bg-primary);
+    background: #FFFFFF;
     border-radius: 16px;
     overflow: hidden;
     position: relative;
-    /* Neumorphic Card */
-    box-shadow:
-        8px 8px 16px var(--neuro-shadow-dark),
-        -8px -8px 16px var(--neuro-shadow-light);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #E2E8F0;
+    transition: all 0.2s ease;
 }
 
 .media-card:hover {
-    transform: translateY(-6px);
-    box-shadow:
-        12px 12px 24px var(--neuro-shadow-dark),
-        -12px -12px 24px var(--neuro-shadow-light);
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     z-index: 10;
 }
 

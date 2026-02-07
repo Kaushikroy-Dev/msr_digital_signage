@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Joi = require('joi');
 const nodemailer = require('nodemailer');
+const { createAuditLogger } = require('./middleware/auditLogger');
 const crypto = require('crypto');
 const pool = require('./config/database');
 require('dotenv').config();
@@ -11,6 +12,7 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(createAuditLogger(pool));
 
 // ============================================
 // DATABASE INITIALIZATION (Auto-create Admin)
@@ -76,7 +78,33 @@ async function initializeAdmin() {
 }
 
 // Run initialization with a slight delay to ensure DB connection is stable
-setTimeout(initializeAdmin, 3000);
+// Run initialization with a slight delay to ensure DB connection is stable
+setTimeout(async () => {
+    try {
+        // Ensure audit_logs table exists
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                tenant_id UUID,
+                user_id UUID,
+                action VARCHAR(255),
+                resource_type VARCHAR(50),
+                resource_id VARCHAR(255),
+                details JSONB,
+                ip_address VARCHAR(45),
+                user_agent TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_id ON audit_logs(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_type ON audit_logs(resource_type);
+        `);
+        console.log('✅ [Initialization] Checked/Created audit_logs table');
+    } catch (err) {
+        console.error('❌ [Initialization] Failed to init audit_logs table:', err);
+    }
+    initializeAdmin();
+}, 3000);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';

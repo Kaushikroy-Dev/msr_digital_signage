@@ -606,7 +606,7 @@ export default function Organization() {
                                     />
                                 </div>
                             </div>
-                            <div className="modal-actions center">
+                            <div className="modal-actions">
                                 <button type="button" className="neuro-button-secondary" onClick={() => setIsAddingDevice(null)}>Cancel</button>
                                 <button type="submit" className="glass-button-primary" disabled={claimDeviceMutation.isPending}>
                                     {claimDeviceMutation.isPending ? 'Connecting...' : 'Connect Device →'}

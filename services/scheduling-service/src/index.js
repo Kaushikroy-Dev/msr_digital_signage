@@ -79,6 +79,23 @@ const pool = new Pool({
 const auditLogger = createAuditLogger(pool);
 app.use(auditLogger);
 
+// Startup Migration: ensure play_in_loop column exists
+(async () => {
+    try {
+        await pool.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'playlist_items' AND column_name = 'play_in_loop') THEN 
+                    ALTER TABLE playlist_items ADD COLUMN play_in_loop BOOLEAN DEFAULT TRUE; 
+                END IF; 
+            END $$;
+        `);
+        console.log('[Startup] Checked/Added play_in_loop column to playlist_items');
+    } catch (err) {
+        console.error('[Startup] Failed to migrate play_in_loop:', err);
+    }
+})();
+
 // Get playlists
 app.get('/playlists', authenticateToken, async (req, res) => {
     try {
@@ -803,18 +820,41 @@ app.post('/playlists/:id/items', authenticateToken, async (req, res) => {
 app.put('/playlists/:playlistId/items/:itemId', authenticateToken, async (req, res) => {
     try {
         const { playlistId, itemId } = req.params;
-        const { duration } = req.body; // duration in seconds
+        const { duration, play_in_loop } = req.body; // duration in seconds, play_in_loop boolean
 
-        if (!duration || duration < 1 || duration > 3600) {
+        // Validation only if fields provided
+        if (duration !== undefined && (duration < 1 || duration > 3600)) {
             return res.status(400).json({ error: 'Duration must be between 1 and 3600 seconds' });
         }
 
-        await pool.query(
-            `UPDATE playlist_items SET duration_seconds = $1 WHERE id = $2 AND playlist_id = $3`,
-            [duration, itemId, playlistId]
-        );
+        // Build dynamic update query to handle partial updates
+        let updateQuery = 'UPDATE playlist_items SET ';
+        const values = [];
+        let paramIndex = 1;
 
-        res.json({ message: 'Item duration updated successfully' });
+        if (duration !== undefined) {
+            updateQuery += `duration_seconds = $${paramIndex}, `;
+            values.push(duration);
+            paramIndex++;
+        }
+        if (play_in_loop !== undefined) {
+            updateQuery += `play_in_loop = $${paramIndex}, `;
+            values.push(play_in_loop);
+            paramIndex++;
+        }
+
+        // Remove trailing comma/space
+        if (values.length === 0) {
+            return res.json({ message: 'No changes provided' });
+        }
+        updateQuery = updateQuery.slice(0, -2);
+
+        updateQuery += ` WHERE id = $${paramIndex} AND playlist_id = $${paramIndex + 1}`;
+        values.push(itemId, playlistId);
+
+        await pool.query(updateQuery, values);
+
+        res.json({ message: 'Item updated successfully' });
     } catch (error) {
         console.error('Update playlist item error:', error);
         res.status(500).json({ error: 'Failed to update item duration' });
