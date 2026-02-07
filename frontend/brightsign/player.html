@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Signage Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        
+        #app {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        
+        .no-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: white;
+            text-align: center;
+        }
+        
+        .media-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .media-content {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: cover;
+        }
+        
+        .pairing-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: white;
+        }
+        
+        .pairing-code {
+            font-size: 72px;
+            font-weight: bold;
+            letter-spacing: 8px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="no-content">
+            <h1>Loading Digital Signage Player...</h1>
+        </div>
+    </div>
+
+    <script>
+        // BrightSign Player Implementation
+        const API_BASE_URL = 'http://localhost:3000/api'; // Configure based on your setup
+        let deviceId = null;
+        let pairingCode = null;
+        let currentContent = null;
+        let contentIndex = 0;
+        let isPlaying = true;
+
+        // Get device ID from URL or localStorage
+        function getDeviceId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlDeviceId = urlParams.get('deviceId');
+            if (urlDeviceId) {
+                deviceId = urlDeviceId;
+                localStorage.setItem('ds_device_id', urlDeviceId);
+                return urlDeviceId;
+            }
+            return localStorage.getItem('ds_device_id');
+        }
+
+        // Generate pairing code
+        async function generatePairingCode() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/devices/pairing/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        platform: 'brightsign',
+                        deviceInfo: {
+                            userAgent: navigator.userAgent,
+                            resolution: `${screen.width}x${screen.height}`,
+                            platform: 'brightsign'
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.code) {
+                    pairingCode = data.code;
+                    showPairingScreen();
+                    pollPairingStatus();
+                }
+            } catch (error) {
+                console.error('Failed to generate pairing code:', error);
+                showError('Failed to connect to server');
+            }
+        }
+
+        // Poll for pairing status
+        async function pollPairingStatus() {
+            if (!pairingCode) return;
+            
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/devices/pairing/status/${pairingCode}`);
+                    const data = await response.json();
+                    
+                    if (data.assignedDeviceId) {
+                        deviceId = data.assignedDeviceId;
+                        localStorage.setItem('ds_device_id', deviceId);
+                        clearInterval(interval);
+                        hidePairingScreen();
+                        startContentPlayback();
+                    }
+                } catch (error) {
+                    // Not paired yet, continue polling
+                }
+            }, 5000);
+        }
+
+        // Fetch current content
+        async function fetchContent() {
+            if (!deviceId) return null;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/schedules/player/${deviceId}/content`);
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Failed to fetch content:', error);
+                return null;
+            }
+        }
+
+        // Start content playback
+        async function startContentPlayback() {
+            const playerData = await fetchContent();
+            
+            if (!playerData || !playerData.playlist || !playerData.items || playerData.items.length === 0) {
+                showNoContent();
+                // Retry after 60 seconds
+                setTimeout(startContentPlayback, 60000);
+                return;
+            }
+            
+            currentContent = playerData;
+            contentIndex = 0;
+            playCurrentItem();
+        }
+
+        // Play current item
+        function playCurrentItem() {
+            if (!currentContent || !currentContent.items) return;
+            
+            const item = currentContent.items[contentIndex];
+            if (!item) {
+                contentIndex = 0;
+                playCurrentItem();
+                return;
+            }
+            
+            const app = document.getElementById('app');
+            app.innerHTML = '';
+            
+            const container = document.createElement('div');
+            container.className = 'media-container';
+            
+            if (item.file_type === 'image') {
+                const img = document.createElement('img');
+                img.src = `${API_BASE_URL}${item.url}`;
+                img.className = 'media-content';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                container.appendChild(img);
+                
+                // Show image for specified duration
+                const duration = (item.duration_seconds || 5) * 1000;
+                setTimeout(() => {
+                    nextItem();
+                }, duration);
+            } else if (item.file_type === 'video') {
+                const video = document.createElement('video');
+                video.src = `${API_BASE_URL}${item.url}`;
+                video.className = 'media-content';
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'cover';
+                video.autoplay = true;
+                video.muted = false;
+                video.onended = () => {
+                    nextItem();
+                };
+                container.appendChild(video);
+            }
+            
+            app.appendChild(container);
+        }
+
+        // Play next item
+        function nextItem() {
+            if (!currentContent || !currentContent.items) return;
+            
+            contentIndex = (contentIndex + 1) % currentContent.items.length;
+            playCurrentItem();
+        }
+
+        // Show pairing screen
+        function showPairingScreen() {
+            const app = document.getElementById('app');
+            const formattedCode = pairingCode ? `${pairingCode.slice(0, 4)}-${pairingCode.slice(4)}` : '';
+            
+            app.innerHTML = `
+                <div class="pairing-screen">
+                    <h1>Register Your Screen</h1>
+                    <p>Enter this code in your cloud portal</p>
+                    <div class="pairing-code">${formattedCode}</div>
+                    <p>Waiting for pairing...</p>
+                </div>
+            `;
+        }
+
+        // Hide pairing screen
+        function hidePairingScreen() {
+            // Content will be shown by startContentPlayback
+        }
+
+        // Show no content message
+        function showNoContent() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="no-content">
+                    <h1>No Content Scheduled</h1>
+                    <p>Waiting for content to be scheduled...</p>
+                </div>
+            `;
+        }
+
+        // Show error message
+        function showError(message) {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="no-content">
+                    <h1>Error</h1>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // Initialize player
+        function init() {
+            deviceId = getDeviceId();
+            
+            if (deviceId) {
+                startContentPlayback();
+                // Refresh content every 60 seconds
+                setInterval(startContentPlayback, 60000);
+            } else {
+                generatePairingCode();
+            }
+        }
+
+        // Start when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

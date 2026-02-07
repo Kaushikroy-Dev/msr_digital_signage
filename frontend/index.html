@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Digital Signage Cloud Portal</title>
+    <!-- Platform Testing: Restore API mocks after page reload (Development Only) -->
+    <script>
+      // Only load test code in development mode
+      (function() {
+        // Check for production indicators
+        // In production, skip all test code
+        const isProduction = 
+          window.location.hostname !== 'localhost' && 
+          window.location.hostname !== '127.0.0.1' &&
+          !window.location.hostname.includes('.local') &&
+          !window.location.hostname.includes('dev') &&
+          !window.location.hostname.includes('test') &&
+          !window.location.hostname.includes('staging');
+        
+        if (isProduction) {
+          // In production, skip all test code
+          return;
+        }
+        
+        // Restore Tizen API if in test mode
+        if (localStorage.getItem('ds_test_platform') === 'tizen') {
+          const tizenAPISetup = localStorage.getItem('ds_test_tizen_api');
+          if (tizenAPISetup) {
+            try {
+              eval(tizenAPISetup);
+            } catch (e) {
+              console.error('[Platform Test] Failed to restore Tizen API:', e);
+            }
+          }
+        }
+        
+        // Restore WebOS API if in test mode
+        if (localStorage.getItem('ds_test_platform') === 'webos') {
+          const webosAPISetup = localStorage.getItem('ds_test_webos_api');
+          if (webosAPISetup) {
+            try {
+              eval(webosAPISetup);
+            } catch (e) {
+              console.error('[Platform Test] Failed to restore WebOS API:', e);
+            }
+          } else {
+            // Fallback: create basic WebOS API if setup not found
+            window.webOS = window.webOS || {
+              version: '6.0',
+              platform: 'webos',
+              service: {
+                request: function() {
+                  return Promise.resolve({ returnValue: true });
+                }
+              },
+              permissions: {
+                check: function() {
+                  return Promise.resolve({ allowed: true });
+                },
+                request: function() {
+                  return Promise.resolve({ allowed: true });
+                }
+              }
+            };
+            window.PalmSystem = window.PalmSystem || {
+              identifier: 'com.digitalsignage.player',
+              version: '1.0.0',
+              stageReady: function() {}
+            };
+          }
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

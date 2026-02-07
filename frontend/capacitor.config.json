@@ -1,0 +1,33 @@
+{
+    "appId": "com.digitalsignage.player",
+    "appName": "Digital Signage Player",
+    "webDir": "dist",
+    "bundledWebRuntime": false,
+    "server": {
+        "url": "http://localhost:5173",
+        "cleartext": true
+    },
+    "android": {
+        "allowMixedContent": true,
+        "captureInput": true,
+        "webContentsDebuggingEnabled": true,
+        "buildOptions": {
+            "keystorePath": "",
+            "keystorePassword": "",
+            "keystoreAlias": "",
+            "keystoreAliasPassword": ""
+        }
+    },
+    "plugins": {
+        "SplashScreen": {
+            "launchShowDuration": 0,
+            "launchAutoHide": true,
+            "backgroundColor": "#000000",
+            "androidSplashResourceName": "splash",
+            "androidScaleType": "CENTER_CROP",
+            "showSpinner": false,
+            "splashFullScreen": true,
+            "splashImmersive": true
+        }
+    }
+}

@@ -1,0 +1,388 @@
+# Render.com Blueprint Configuration
+# This file defines all services for the Digital Signage Platform
+
+services:
+  # API Gateway
+  - type: web
+    name: api-gateway
+    env: docker
+    dockerfilePath: ./services/api-gateway/Dockerfile
+    dockerContext: ./services/api-gateway
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: digital-signage-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: digital-signage-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: digital-signage-db
+          property: database
+      - key: DATABASE_USER
+        fromDatabase:
+          name: digital-signage-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: digital-signage-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: port
+      - key: RABBITMQ_HOST
+        sync: false  # Set manually from CloudAMQP
+      - key: RABBITMQ_PORT
+        value: 5672
+      - key: RABBITMQ_USER
+        sync: false  # Set manually
+      - key: RABBITMQ_PASS
+        sync: false  # Set manually
+      - key: AUTH_SERVICE_URL
+        fromService:
+          type: web
+          name: auth-service
+          property: host
+      - key: CONTENT_SERVICE_URL
+        fromService:
+          type: web
+          name: content-service
+          property: host
+      - key: TEMPLATE_SERVICE_URL
+        fromService:
+          type: web
+          name: template-service
+          property: host
+      - key: SCHEDULING_SERVICE_URL
+        fromService:
+          type: web
+          name: scheduling-service
+          property: host
+      - key: DEVICE_SERVICE_URL
+        fromService:
+          type: web
+          name: device-service
+          property: host
+      - key: CORS_ORIGIN
+        fromService:
+          type: web
+          name: frontend
+          property: host
+      - key: JWT_SECRET
+        sync: false  # Generate and set manually
+      - key: JWT_EXPIRY
+        value: 24h
+
+  # Auth Service
+  - type: web
+    name: auth-service
+    env: docker
+    dockerfilePath: ./services/auth-service/Dockerfile
+    dockerContext: ./services/auth-service
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: digital-signage-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: digital-signage-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: digital-signage-db
+          property: database
+      - key: DATABASE_USER
+        fromDatabase:
+          name: digital-signage-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: digital-signage-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: port
+      - key: JWT_SECRET
+        sync: false  # Set manually (same as API Gateway)
+      - key: JWT_EXPIRY
+        value: 24h
+
+  # Content Service
+  - type: web
+    name: content-service
+    env: docker
+    dockerfilePath: ./services/content-service/Dockerfile
+    dockerContext: ./services/content-service
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3002
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: digital-signage-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: digital-signage-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: digital-signage-db
+          property: database
+      - key: DATABASE_USER
+        fromDatabase:
+          name: digital-signage-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: digital-signage-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: port
+      - key: RABBITMQ_HOST
+        sync: false  # Set manually from CloudAMQP
+      - key: RABBITMQ_PORT
+        value: 5672
+      - key: RABBITMQ_USER
+        sync: false  # Set manually
+      - key: RABBITMQ_PASS
+        sync: false  # Set manually
+      - key: UPLOAD_DIR
+        value: /app/storage
+      - key: JWT_SECRET
+        sync: false  # Set manually (same as API Gateway)
+
+  # Template Service
+  - type: web
+    name: template-service
+    env: docker
+    dockerfilePath: ./services/template-service/Dockerfile
+    dockerContext: ./services/template-service
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3003
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: digital-signage-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: digital-signage-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: digital-signage-db
+          property: database
+      - key: DATABASE_USER
+        fromDatabase:
+          name: digital-signage-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: digital-signage-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: port
+      - key: JWT_SECRET
+        sync: false  # Set manually (same as API Gateway)
+
+  # Scheduling Service
+  - type: web
+    name: scheduling-service
+    env: docker
+    dockerfilePath: ./services/scheduling-service/Dockerfile
+    dockerContext: ./services/scheduling-service
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3004
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: digital-signage-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: digital-signage-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: digital-signage-db
+          property: database
+      - key: DATABASE_USER
+        fromDatabase:
+          name: digital-signage-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: digital-signage-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: port
+      - key: JWT_SECRET
+        sync: false  # Set manually (same as API Gateway)
+
+  # Device Service
+  - type: web
+    name: device-service
+    env: docker
+    dockerfilePath: ./services/device-service/Dockerfile
+    dockerContext: ./services/device-service
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3005
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: digital-signage-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: digital-signage-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: digital-signage-db
+          property: database
+      - key: DATABASE_USER
+        fromDatabase:
+          name: digital-signage-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: digital-signage-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: digital-signage-redis
+          property: port
+      - key: RABBITMQ_HOST
+        sync: false  # Set manually from CloudAMQP
+      - key: RABBITMQ_PORT
+        value: 5672
+      - key: RABBITMQ_USER
+        sync: false  # Set manually
+      - key: RABBITMQ_PASS
+        sync: false  # Set manually
+      - key: JWT_SECRET
+        sync: false  # Set manually (same as API Gateway)
+
+  # Frontend
+  - type: web
+    name: frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: api-gateway
+          property: host
+
+  # Media Processor Worker
+  - type: worker
+    name: media-processor
+    env: docker
+    dockerfilePath: ./workers/media-processor/Dockerfile
+    dockerContext: ./workers/media-processor
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: digital-signage-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: digital-signage-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: digital-signage-db
+          property: database
+      - key: DATABASE_USER
+        fromDatabase:
+          name: digital-signage-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: digital-signage-db
+          property: password
+      - key: RABBITMQ_HOST
+        sync: false  # Set manually from CloudAMQP
+      - key: RABBITMQ_PORT
+        value: 5672
+      - key: RABBITMQ_USER
+        sync: false  # Set manually
+      - key: RABBITMQ_PASS
+        sync: false  # Set manually
+
+databases:
+  - name: digital-signage-db
+    databaseName: digital_signage
+    user: digital_signage_user
+    plan: free  # Change to starter for production
+
+# Note: Redis and RabbitMQ need to be added manually in Render dashboard
+# Redis: Add as managed service
+# RabbitMQ: Use CloudAMQP (free tier available)

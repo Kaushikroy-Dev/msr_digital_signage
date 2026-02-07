@@ -1,0 +1,35 @@
+{
+  "name": "digital-signage-platform",
+  "version": "1.0.0",
+  "description": "Enterprise Cloud Digital Signage Solution",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "frontend",
+    "workers/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:services\" \"npm run dev:frontend\"",
+    "dev:services": "concurrently \"npm run dev -w auth-service\" \"npm run dev -w content-service\" \"npm run dev -w template-service\" \"npm run dev -w scheduling-service\" \"npm run dev -w device-service\" \"npm run dev -w api-gateway\"",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "test:unit": "jest --coverage",
+    "test:integration": "jest --config jest.integration.config.js",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\""
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "axios": "^1.13.4",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.55.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
