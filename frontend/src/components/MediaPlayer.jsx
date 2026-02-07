@@ -121,12 +121,21 @@ export default function MediaPlayer({
     };
 
     const [loadError, setLoadError] = useState(null);
+    const [imageRetryKey, setImageRetryKey] = useState(0);
     const retryCountRef = useRef(0);
 
     if (!media) return null;
 
-    const apiUrl = API_BASE_URL;
-    const mediaUrl = `${apiUrl}${media.url}`;
+    const baseUrl = (API_BASE_URL || '').replace(/\/$/, '');
+    const path = (media.url || '').startsWith('/') ? media.url : `/${media.url || ''}`;
+    const mediaUrl = `${baseUrl}${path}`;
+
+    // Diagnostic: fetch URL on error to log HTTP status (helps debug 404/500/CORS)
+    const logMediaStatus = (url) => {
+        fetch(url, { method: 'HEAD', mode: 'cors' })
+            .then((r) => console.warn('[MediaPlayer] Media URL status:', r.status, r.statusText, url))
+            .catch((e) => console.warn('[MediaPlayer] Media URL fetch failed:', e.message, url));
+    };
 
     // Handle media loading errors with one retry for transient failures
     const handleError = (error) => {
@@ -135,8 +144,15 @@ export default function MediaPlayer({
             error: error.message || 'Unknown error',
             mediaType: media.file_type
         });
-        if (media.file_type === 'video' && retryCountRef.current < 1 && videoRef.current) {
-            retryCountRef.current += 1;
+        logMediaStatus(mediaUrl);
+
+        if (retryCountRef.current >= 1) {
+            setLoadError('Failed to load media');
+            return;
+        }
+        retryCountRef.current += 1;
+
+        if (media.file_type === 'video' && videoRef.current) {
             setLoadError(null);
             const src = videoRef.current.src;
             setTimeout(() => {
@@ -146,6 +162,9 @@ export default function MediaPlayer({
                     videoRef.current.load();
                 }
             }, 1500);
+        } else if (media.file_type === 'image') {
+            setLoadError(null);
+            setImageRetryKey((k) => k + 1);
         } else {
             setLoadError('Failed to load media');
         }
@@ -175,11 +194,21 @@ export default function MediaPlayer({
         };
     }, [media?.url, media?.file_type, autoPlay, duration, onComplete]);
 
-    // Reset error and retry count when media changes
+    // Reset error, retry count and image retry key when media changes
     useEffect(() => {
         setLoadError(null);
+        setImageRetryKey(0);
         retryCountRef.current = 0;
     }, [media.url]);
+
+    // When load fails after retry, auto-advance after 3s so playlist does not get stuck
+    useEffect(() => {
+        if (!loadError || !onComplete) return;
+        const t = setTimeout(() => {
+            onComplete();
+        }, 3000);
+        return () => clearTimeout(t);
+    }, [loadError, onComplete]);
 
     // Do not auto-request fullscreen: browsers/WebView require a user gesture.
     // Native TV apps can enable fullscreen themselves if needed.
@@ -203,10 +232,12 @@ export default function MediaPlayer({
                 ) : media.file_type === 'image' ? (
                     <div className="media-stage">
                         <img
+                            key={imageRetryKey}
                             src={mediaUrl}
                             alt={media.name || media.original_name}
                             className="media-content tv-media"
                             onError={handleError}
+                            crossOrigin="anonymous"
                         />
                     </div>
                 ) : media.file_type === 'video' ? (
@@ -235,6 +266,7 @@ export default function MediaPlayer({
                                 <video
                                     ref={videoRef}
                                     src={mediaUrl}
+                                    crossOrigin="anonymous"
                                     className={`media-content tv-media ${isReady ? 'video-ready' : 'video-loading'}`}
                                     onTimeUpdate={handleVideoTimeUpdate}
                                     onEnded={handleVideoEnded}
