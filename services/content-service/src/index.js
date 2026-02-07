@@ -154,83 +154,31 @@ pool.query('SELECT current_database(), current_schema()')
 const auditLogger = createAuditLogger(pool);
 app.use(auditLogger);
 
-// Check if using S3 or local storage
-// Only use S3 if credentials are provided AND are not placeholder values
-const USE_S3 = process.env.AWS_ACCESS_KEY_ID &&
-    process.env.AWS_SECRET_ACCESS_KEY &&
-    process.env.AWS_ACCESS_KEY_ID !== 'your_access_key' &&
-    process.env.AWS_SECRET_ACCESS_KEY !== 'your_secret_key' &&
-    process.env.AWS_ACCESS_KEY_ID.trim() !== '' &&
-    process.env.AWS_SECRET_ACCESS_KEY.trim() !== '';
-// Use /app/storage when running in Docker, otherwise use uploads in current directory
+// ============================================================================
+// STORAGE CONFIGURATION - Using Railway Local Storage (Default)
+// ============================================================================
+// S3 is DISABLED by default. To enable S3, set AWS credentials in Railway.
+// For Railway deployment, we use persistent volume storage at /app/storage
+
+// Check if S3 should be used (disabled by default)
+const USE_S3 = false; // Explicitly disabled - using Railway local storage
+
+// Use Railway's persistent volume at /app/storage
 const UPLOAD_DIR = process.env.UPLOAD_DIR || (fs.existsSync('/app/storage') ? '/app/storage' : path.join(process.cwd(), 'uploads'));
 
-// Create uploads directory if using local storage
-if (!USE_S3) {
-    if (!fs.existsSync(UPLOAD_DIR)) {
-        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-    if (!fs.existsSync(path.join(UPLOAD_DIR, 'thumbnails'))) {
-        fs.mkdirSync(path.join(UPLOAD_DIR, 'thumbnails'), { recursive: true });
-    }
-    console.log('Using local file storage at:', UPLOAD_DIR);
+// Always create uploads directory for local storage
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+if (!fs.existsSync(path.join(UPLOAD_DIR, 'thumbnails'))) {
+    fs.mkdirSync(path.join(UPLOAD_DIR, 'thumbnails'), { recursive: true });
 }
 
-// Define bucket and CDN configuration BEFORE S3 client
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'digital-signage-media';
-const rawCdnUrl = process.env.S3_CDN_URL || `https://${BUCKET_NAME}.s3.amazonaws.com`;
-// Normalize CDN URL: add https:// if missing, remove trailing slashes
-let CDN_URL = rawCdnUrl || '';
-if (CDN_URL && !/^https?:\/\//i.test(CDN_URL)) {
-    // No protocol found, add https://
-    CDN_URL = `https://${CDN_URL}`;
-}
-// Remove trailing slashes
-CDN_URL = CDN_URL.replace(/\/+$/, '');
+console.log('[Storage] Using Railway local file storage at:', UPLOAD_DIR);
+console.log('[Storage] S3 is DISABLED - all media stored locally');
 
-console.log('[S3] CDN Configuration:', {
-    rawCdnUrl,
-    normalizedCdnUrl: CDN_URL,
-    bucketName: BUCKET_NAME,
-    useS3: USE_S3
-});
-
-// S3 Client configuration (only if credentials provided)
-let s3Client;
-if (USE_S3) {
-    const awsRegion = process.env.AWS_REGION || 'us-east-1';
-    
-    // For buckets in regions other than us-east-1, we MUST use explicit regional endpoints
-    // to avoid 301 PermanentRedirect errors
-    const s3Config = {
-        region: awsRegion,
-        credentials: {
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-        }
-    };
-    
-    // CRITICAL: For regional buckets, we must use the regional endpoint
-    // The SDK will try to use s3.amazonaws.com by default, which causes a 301 redirect
-    // We need to explicitly set the endpoint to the regional one
-    if (awsRegion && awsRegion !== 'us-east-1') {
-        s3Config.endpoint = `https://s3.${awsRegion}.amazonaws.com`;
-        console.log(`[S3] Using regional endpoint: ${s3Config.endpoint}`);
-    }
-    
-    // Use virtual-hosted-style addressing (bucket.s3.region.amazonaws.com)
-    // This works better with CloudFront
-    s3Config.forcePathStyle = false;
-    
-    s3Client = new S3Client(s3Config);
-    
-    console.log('[S3] Client configured:', {
-        region: awsRegion,
-        bucket: BUCKET_NAME,
-        endpoint: s3Config.endpoint || 'default',
-        forcePathStyle: s3Config.forcePathStyle
-    });
-}
+// S3 client is not initialized (S3 disabled)
+let s3Client = null;
 
 // Serve uploaded files statically (essential for local development or when not using S3)
 // Serve uploaded files with HTTP cache headers for performance
