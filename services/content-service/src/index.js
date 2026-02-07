@@ -176,6 +176,52 @@ if (!USE_S3) {
     console.log('Using local file storage at:', UPLOAD_DIR);
 }
 
+// Define bucket and CDN configuration BEFORE S3 client
+const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'digital-signage-media';
+const rawCdnUrl = process.env.S3_CDN_URL || `https://${BUCKET_NAME}.s3.amazonaws.com`;
+// Normalize CDN URL: add https:// if missing, remove trailing slashes
+let CDN_URL = rawCdnUrl || '';
+if (CDN_URL && !/^https?:\/\//i.test(CDN_URL)) {
+    // No protocol found, add https://
+    CDN_URL = `https://${CDN_URL}`;
+}
+// Remove trailing slashes
+CDN_URL = CDN_URL.replace(/\/+$/, '');
+
+console.log('[S3] CDN Configuration:', {
+    rawCdnUrl,
+    normalizedCdnUrl: CDN_URL,
+    bucketName: BUCKET_NAME,
+    useS3: USE_S3
+});
+
+// S3 Client configuration (only if credentials provided)
+let s3Client;
+if (USE_S3) {
+    const awsRegion = process.env.AWS_REGION || 'us-east-1';
+    
+    // For buckets in regions other than us-east-1, we need to use region-specific endpoints
+    const s3Config = {
+        region: awsRegion,
+        credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        }
+    };
+    
+    // Force path-style addressing for better compatibility with regional buckets
+    // This ensures the bucket name is in the path, not the subdomain
+    s3Config.forcePathStyle = false; // Use virtual-hosted-style (default, works better with CloudFront)
+    
+    s3Client = new S3Client(s3Config);
+    
+    console.log('[S3] Client configured:', {
+        region: awsRegion,
+        bucket: BUCKET_NAME,
+        forcePathStyle: s3Config.forcePathStyle
+    });
+}
+
 // Serve uploaded files statically (essential for local development or when not using S3)
 // Serve uploaded files with HTTP cache headers for performance
 app.use('/uploads', express.static(UPLOAD_DIR, {
@@ -241,37 +287,6 @@ app.use('/uploads', express.static(UPLOAD_DIR, {
         }
     }
 }));
-
-// S3 Client configuration (only if credentials provided)
-let s3Client;
-if (USE_S3) {
-    s3Client = new S3Client({
-        region: process.env.AWS_REGION || 'us-east-1',
-        credentials: {
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-        }
-    });
-    console.log('Using S3 storage');
-}
-
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'digital-signage-media';
-const rawCdnUrl = process.env.S3_CDN_URL || `https://${BUCKET_NAME}.s3.amazonaws.com`;
-// Normalize CDN URL: add https:// if missing, remove trailing slashes
-let CDN_URL = rawCdnUrl || '';
-if (CDN_URL && !/^https?:\/\//i.test(CDN_URL)) {
-    // No protocol found, add https://
-    CDN_URL = `https://${CDN_URL}`;
-}
-// Remove trailing slashes
-CDN_URL = CDN_URL.replace(/\/+$/, '');
-
-console.log('[S3] CDN Configuration:', {
-    rawCdnUrl,
-    normalizedCdnUrl: CDN_URL,
-    bucketName: BUCKET_NAME,
-    useS3: USE_S3
-});
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
