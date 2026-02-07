@@ -29,19 +29,19 @@ If your content service Dockerfile uses `WORKDIR /app` and the code expects `/ap
 
 ---
 
-## Option 2: Use S3 (or compatible object storage)
+## Option 2: Use S3 + CloudFront CDN
 
-The content service already supports S3. If you configure it, uploads go to the bucket instead of local disk and survive redeploys.
+The content service already supports S3. If you configure it, uploads go to the bucket and URLs use your CDN for fast delivery.
 
-1. Create an S3 bucket (e.g. AWS S3 or Cloudflare R2).
-2. In Railway → **content-service** → **Variables**, set:
-   - `USE_S3=true`
-   - `AWS_ACCESS_KEY_ID=...`
-   - `AWS_SECRET_ACCESS_KEY=...`
-   - `AWS_REGION=...` (e.g. `us-east-1`)
-   - `S3_BUCKET_NAME=your-bucket-name`
+1. Create S3 bucket, IAM user (access key), and CloudFront distribution (see AWS guides).
+2. In Railway → **content-service** → **Variables**, set (never commit credentials; use Railway env only):
+   - `AWS_ACCESS_KEY_ID` = your IAM access key
+   - `AWS_SECRET_ACCESS_KEY` = your IAM secret key
+   - `AWS_REGION` = e.g. `us-east-1` or `eu-north-1`
+   - `S3_BUCKET_NAME` = your bucket name
+   - `S3_CDN_URL` = CloudFront URL, e.g. `https://d1234abcd.cloudfront.net` (or `d1234abcd.cloudfront.net`; the app adds `https://` if missing)
 3. Redeploy the content service.
-4. Re-upload media (or migrate existing files to S3 and fix `storage_path` if needed).
+4. Re-upload media (existing DB rows point to old paths; new uploads go to S3 and use CDN URLs).
 
 ---
 
