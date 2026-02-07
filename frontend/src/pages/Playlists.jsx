@@ -5,6 +5,7 @@ import api, { API_BASE_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import PlaylistPreview from '../components/PlaylistPreview';
 import PropertyZoneSelector from '../components/PropertyZoneSelector';
+import { TRANSITION_EFFECTS } from '../constants/transitions';
 import './Playlists.css';
 
 export default function Playlists() {
@@ -305,10 +306,9 @@ export default function Playlists() {
                                     <select className="input"
                                         value={localPlaylistData.transitionEffect}
                                         onChange={(e) => handleLocalPropertyChange('transitionEffect', e.target.value)}>
-                                        <option value="fade">Fade</option>
-                                        <option value="slide">Slide</option>
-                                        <option value="wipe">Wipe</option>
-                                        <option value="zoom">Zoom</option>
+                                        {TRANSITION_EFFECTS.map(({ value, label }) => (
+                                            <option key={value} value={value}>{label}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="form-group">
@@ -574,11 +574,9 @@ export default function Playlists() {
                                     value={localPlaylistData.transitionEffect}
                                     onChange={(e) => setLocalPlaylistData({ ...localPlaylistData, transitionEffect: e.target.value })}
                                 >
-                                    <option value="fade">Fade</option>
-                                    <option value="slide">Slide</option>
-                                    <option value="wipe">Wipe</option>
-                                    <option value="zoom">Zoom</option>
-                                    <option value="none">None</option>
+                                    {TRANSITION_EFFECTS.map(({ value, label }) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
                                 </select>
                             </div>
 

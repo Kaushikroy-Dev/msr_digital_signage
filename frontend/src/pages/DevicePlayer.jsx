@@ -896,11 +896,13 @@ export default function DevicePlayer() {
     return (
         <div className="device-player-container tv-mode">
             <MediaPlayer
+                key={currentIndex}
                 media={currentMedia}
                 onClose={() => { }}
                 autoPlay={isPlaying}
                 duration={currentItem.duration_seconds}
                 transitionEffect={playlist.transition_effect}
+                transitionDurationMs={playlist.transition_duration_ms ?? 500}
                 onComplete={handleMediaComplete}
             />
         </div>

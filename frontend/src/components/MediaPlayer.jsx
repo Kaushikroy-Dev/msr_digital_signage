@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../lib/api';
+import { TRANSITION_EFFECT_VALUES, DEFAULT_TRANSITION_EFFECT } from '../constants/transitions';
 import './MediaPlayer.css';
 
 export default function MediaPlayer({
@@ -8,8 +9,12 @@ export default function MediaPlayer({
     autoPlay = false,
     duration = null,
     transitionEffect = 'fade',
+    transitionDurationMs = 500,
     onComplete = null
 }) {
+    const effect = transitionEffect === 'none' || !TRANSITION_EFFECT_VALUES.includes(transitionEffect)
+        ? (transitionEffect === 'none' ? 'none' : DEFAULT_TRANSITION_EFFECT)
+        : transitionEffect;
     const [isPlaying, setIsPlaying] = useState(autoPlay);
     const [progress, setProgress] = useState(0);
     const [isBuffering, setIsBuffering] = useState(false);
@@ -142,8 +147,16 @@ export default function MediaPlayer({
         }
     }, [autoPlay]);
 
+    const overlayStyle = effect === 'none'
+        ? { animation: 'none' }
+        : { animationDuration: `${transitionDurationMs}ms` };
+
     return (
-        <div className={`media-player-overlay tv-mode ${transitionEffect}`} ref={containerRef}>
+        <div
+            className={`media-player-overlay tv-mode ${effect}`}
+            style={overlayStyle}
+            ref={containerRef}
+        >
             <div className="media-player-content tv-content">
                 {!autoPlay ? (
                     <div className="screen-off-overlay">
