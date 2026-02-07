@@ -1,3 +1,0 @@
-Triggering redeploy at 2026-02-03 17:30
-Requested by user to fix login issue.
-Current version: v3-diagnostic-stats
