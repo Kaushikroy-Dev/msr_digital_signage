@@ -20,24 +20,7 @@ export default function MediaLibrary() {
     const [sharingAsset, setSharingAsset] = useState(null);
     const [uploadProgress, setUploadProgress] = useState(0);
 
-    // Simulated progress bar for upload
-    useEffect(() => {
-        let interval;
-        if (uploadMutation.isPending) {
-            setUploadProgress(0);
-            interval = setInterval(() => {
-                setUploadProgress((prev) => {
-                    if (prev >= 90) return 90;
-                    return prev + Math.random() * 5;
-                });
-            }, 200);
-        } else {
-            setUploadProgress(100);
-            const timeout = setTimeout(() => setUploadProgress(0), 1000);
-            return () => clearTimeout(timeout);
-        }
-        return () => clearInterval(interval);
-    }, [uploadMutation.isPending]);
+    const [imgErrors, setImgErrors] = useState({});
 
     // Auto-select property/zone for property_admin and zone_admin
     useEffect(() => {
@@ -181,6 +164,25 @@ export default function MediaLibrary() {
             alert(`Upload failed: ${errorMessage}`);
         }
     });
+
+    // Simulated progress bar for upload
+    useEffect(() => {
+        let interval;
+        if (uploadMutation.isPending) {
+            setUploadProgress(0);
+            interval = setInterval(() => {
+                setUploadProgress((prev) => {
+                    if (prev >= 90) return 90;
+                    return prev + Math.random() * 5;
+                });
+            }, 200);
+        } else {
+            setUploadProgress(100);
+            const timeout = setTimeout(() => setUploadProgress(0), 1000);
+            return () => clearTimeout(timeout);
+        }
+        return () => clearInterval(interval);
+    }, [uploadMutation.isPending]);
 
     // Delete mutation
     const deleteMutation = useMutation({
@@ -344,27 +346,18 @@ export default function MediaLibrary() {
                     {filteredAssets.map((asset) => (
                         <div key={asset.id} className="media-card">
                             <div className="media-preview">
-                                {asset.fileType === 'image' ? (
+                                {asset.fileType === 'image' && !imgErrors[asset.id] ? (
                                     <img
                                         src={`${API_BASE_URL}${asset.thumbnailUrl || asset.url}`}
                                         alt={asset.originalName}
-                                        onError={(e) => {
-                                            // Fallback to original image if thumbnail fails
-                                            if (asset.thumbnailUrl && e.target.src !== asset.url) {
-                                                e.target.src = `${API_BASE_URL}${asset.url}`;
-                                            }
-                                        }}
+                                        onError={() => setImgErrors(prev => ({ ...prev, [asset.id]: true }))}
                                     />
-                                ) : asset.fileType === 'video' && asset.thumbnailUrl ? (
+                                ) : asset.fileType === 'video' && asset.thumbnailUrl && !imgErrors[asset.id] ? (
                                     <img
                                         src={`${API_BASE_URL}${asset.thumbnailUrl}`}
                                         alt={asset.originalName}
                                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                        onError={(e) => {
-                                            // Fallback to video icon if thumbnail fails
-                                            e.target.style.display = 'none';
-                                            e.target.parentElement.innerHTML = `<div class="media-icon">${getFileIcon(asset.fileType)}</div>`;
-                                        }}
+                                        onError={() => setImgErrors(prev => ({ ...prev, [asset.id]: true }))}
                                     />
                                 ) : (
                                     <div className="media-icon">

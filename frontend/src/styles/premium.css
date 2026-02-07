@@ -56,32 +56,37 @@
    MODAL STYLES - NEUMORPHIC
    ============================================ */
 
+/* ============================================
+   MODAL STYLES - CLEAN MODERN
+   ============================================ */
+
 .modal-overlay.glass {
-    background: rgba(245, 247, 250, 0.8);
-    backdrop-filter: blur(12px);
+    background: rgba(15, 23, 42, 0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 .modal-content.premium-modal {
-    background: var(--neuro-bg-primary);
+    background: #FFFFFF;
     border-radius: var(--radius-2xl);
     padding: var(--space-2xl);
     max-width: 560px;
     box-shadow:
-        12px 12px 24px var(--neuro-shadow-dark),
-        -12px -12px 24px var(--neuro-shadow-light),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+        0 20px 25px -5px rgba(0, 0, 0, 0.1),
+        0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(226, 232, 240, 0.8);
     animation: slideUpFade 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes slideUpFade {
     from {
         opacity: 0;
-        transform: translateY(20px);
+        transform: translateY(20px) scale(0.98);
     }
 
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -90,37 +95,35 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 16px;
-    background: var(--glass-bg);
-    backdrop-filter: blur(10px);
+    padding: 6px 12px;
+    background: #EFF6FF;
+    /* blue-50 */
     border-radius: var(--radius-full);
     font-size: 13px;
     font-weight: 600;
     color: var(--accent-primary);
     margin-bottom: var(--space-md);
-    box-shadow:
-        4px 4px 8px rgba(209, 217, 230, 0.4),
-        -4px -4px 8px rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(91, 127, 255, 0.1);
 }
 
 /* Modal Header */
 .modal-header h2 {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 700;
     color: var(--text-primary);
     margin-bottom: 8px;
-    letter-spacing: -0.5px;
+    letter-spacing: -0.02em;
 }
 
 .modal-header p {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--text-secondary);
     margin-bottom: var(--space-xl);
     line-height: 1.5;
 }
 
 /* ============================================
-   FORM INPUTS - NEUMORPHIC INSET
+   FORM INPUTS - CLEAN MODERN
    ============================================ */
 
 .neuro-form-group {
@@ -132,8 +135,9 @@
     display: block;
     font-size: 13px;
     font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: var(--space-xs);
+    color: #64748B;
+    /* slate-500 */
+    margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -142,33 +146,33 @@
 .premium-select-field,
 .neuro-input {
     width: 100%;
-    height: 56px;
-    padding: 16px 20px;
-    background: var(--neuro-bg-primary);
-    border: none;
+    height: 52px;
+    padding: 0 16px;
+    background: #F8FAFC;
+    /* slate-50 */
+    border: 1px solid #E2E8F0;
+    /* slate-200 */
     border-radius: var(--radius-lg);
-    font-size: 16px;
+    font-size: 15px;
     color: var(--text-primary);
     font-family: inherit;
-    box-shadow:
-        inset 4px 4px 8px rgba(209, 217, 230, 0.6),
-        inset -4px -4px 8px rgba(255, 255, 255, 0.5);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s ease;
+    box-shadow: none;
 }
 
 .premium-input-field:focus,
 .premium-select-field:focus,
 .neuro-input:focus {
     outline: none;
-    box-shadow:
-        inset 4px 4px 8px rgba(209, 217, 230, 0.6),
-        inset -4px -4px 8px rgba(255, 255, 255, 0.5),
-        0 0 0 3px rgba(91, 127, 255, 0.1);
+    background: #FFFFFF;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(91, 127, 255, 0.1);
 }
 
 .premium-input-field::placeholder,
 .neuro-input::placeholder {
-    color: var(--text-tertiary);
+    color: #94A3B8;
+    /* slate-400 */
 }
 
 /* Input with Icon */
@@ -181,12 +185,12 @@
     left: 16px;
     top: 50%;
     transform: translateY(-50%);
-    color: var(--text-tertiary);
+    color: #94A3B8;
     pointer-events: none;
 }
 
 .input-with-icon input {
-    padding-left: 48px;
+    padding-left: 44px;
 }
 
 /* Form Row (Two Columns) */
@@ -197,42 +201,37 @@
 }
 
 /* ============================================
-   BUTTONS - NEUMORPHIC & GLASS
+   BUTTONS - CLEAN MODERN
    ============================================ */
 
-/* Secondary Button (Neumorphic Raised) */
+/* Secondary Button (Outline/Ghost) */
 .btn.btn-ghost,
 .neuro-button-secondary {
-    height: 56px;
+    height: 52px;
     padding: 0 var(--space-lg);
-    background: var(--neuro-bg-primary);
-    border: none;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
     border-radius: var(--radius-lg);
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--text-secondary);
     cursor: pointer;
     font-family: inherit;
-    box-shadow:
-        6px 6px 12px rgba(209, 217, 230, 0.6),
-        -6px -6px 12px rgba(255, 255, 255, 0.8);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn.btn-ghost:hover,
 .neuro-button-secondary:hover {
-    transform: translateY(-2px);
-    box-shadow:
-        8px 8px 16px rgba(209, 217, 230, 0.6),
-        -8px -8px 16px rgba(255, 255, 255, 0.8);
+    background: #F8FAFC;
+    border-color: #CBD5E1;
+    transform: translateY(-1px);
 }
 
 .btn.btn-ghost:active,
 .neuro-button-secondary:active {
     transform: translateY(0);
-    box-shadow:
-        inset 4px 4px 8px rgba(209, 217, 230, 0.6),
-        inset -4px -4px 8px rgba(255, 255, 255, 0.5);
+    background: #F1F5F9;
 }
 
 /* Primary Button (Gradient Glass) */
@@ -326,32 +325,27 @@
 .pairing-box {
     width: 56px;
     height: 64px;
-    background: var(--neuro-bg-primary);
-    border: none;
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
     border-radius: var(--radius-lg);
     font-size: 28px;
     font-weight: 700;
     color: var(--text-primary);
     text-align: center;
     font-family: 'SF Mono', 'Monaco', monospace;
-    box-shadow:
-        inset 4px 4px 8px rgba(209, 217, 230, 0.6),
-        inset -4px -4px 8px rgba(255, 255, 255, 0.5);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s ease;
 }
 
 .pairing-box:focus {
     outline: none;
-    box-shadow:
-        inset 4px 4px 8px rgba(209, 217, 230, 0.6),
-        inset -4px -4px 8px rgba(255, 255, 255, 0.5),
-        0 0 0 3px rgba(91, 127, 255, 0.2);
+    background: #FFFFFF;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(91, 127, 255, 0.2);
 }
 
 .pairing-box:not(:placeholder-shown) {
-    box-shadow:
-        inset 4px 4px 8px rgba(110, 231, 183, 0.3),
-        inset -4px -4px 8px rgba(255, 255, 255, 0.5);
+    background: #FFFFFF;
+    border-color: var(--accent-success);
 }
 
 /* ============================================
@@ -362,16 +356,15 @@
     width: 80px;
     height: 80px;
     margin: 0 auto var(--space-lg);
-    background: var(--neuro-bg-primary);
+    background: #FFFFFF;
     border-radius: var(--radius-xl);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 40px;
-    box-shadow:
-        12px 12px 24px rgba(209, 217, 230, 0.6),
-        -12px -12px 24px rgba(255, 255, 255, 0.8),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #E2E8F0;
+    color: var(--accent-primary);
 }
 
 /* ============================================
@@ -430,12 +423,11 @@
    ============================================ */
 
 .filter-card-neuro {
-    background: var(--neuro-bg-primary);
+    background: #FFFFFF;
     border-radius: var(--radius-xl);
     padding: var(--space-lg);
-    box-shadow:
-        8px 8px 16px rgba(209, 217, 230, 0.6),
-        -8px -8px 16px rgba(255, 255, 255, 0.8);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    border: 1px solid #E2E8F0;
 }
 
 .filter-card-label {
@@ -543,18 +535,16 @@
 }
 
 .filter-pill {
-    padding: 10px 20px;
-    background: var(--neuro-bg-primary);
-    border: none;
+    padding: 8px 16px;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
     border-radius: var(--radius-full);
     font-size: 14px;
     font-weight: 600;
     color: var(--text-secondary);
     cursor: pointer;
-    box-shadow:
-        4px 4px 8px rgba(209, 217, 230, 0.6),
-        -4px -4px 8px rgba(255, 255, 255, 0.8);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
 }
 
 .filter-pill.active {
