@@ -828,13 +828,17 @@ export default function DevicePlayer() {
         );
     }
 
+    // Per-item duration: prefer duration_seconds, fallback duration_ms, then 5s
+    const itemDurationSec = currentItem.duration_seconds ?? (currentItem.duration_ms != null ? currentItem.duration_ms / 1000 : null);
+    const durationSec = (itemDurationSec != null && itemDurationSec > 0) ? itemDurationSec : 5;
+
     // Check if current item is a template
     if (currentItem.content_type === 'template' && currentItem.template) {
         return (
             <div className="device-player-container tv-mode">
                 <TemplateRenderer
                     template={currentItem.template}
-                    duration={currentItem.duration_seconds}
+                    duration={durationSec}
                     onComplete={handleMediaComplete}
                     apiUrl={API_BASE_URL}
                     tenantId={playerData?.tenantId} // Pass tenantId for public asset access
@@ -900,8 +904,8 @@ export default function DevicePlayer() {
                 media={currentMedia}
                 onClose={() => { }}
                 autoPlay={isPlaying}
-                duration={currentItem.duration_seconds}
-                transitionEffect={playlist.transition_effect}
+                duration={durationSec}
+                transitionEffect={playlist.transition_effect || 'fade'}
                 transitionDurationMs={playlist.transition_duration_ms ?? 500}
                 onComplete={handleMediaComplete}
             />

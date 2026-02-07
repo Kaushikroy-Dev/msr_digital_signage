@@ -22,6 +22,7 @@ export default function MediaPlayer({
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const timerRef = useRef(null);
+    const videoDurationTimerRef = useRef(null);
 
     useEffect(() => {
         if (!autoPlay) {
@@ -34,7 +35,7 @@ export default function MediaPlayer({
         } else {
             if (media?.file_type === 'video' && videoRef.current) {
                 videoRef.current.play().catch(() => { });
-            } else if (media?.file_type === 'image' && duration) {
+            } else if (media?.file_type === 'image') {
                 startImageTimer();
             }
             setIsPlaying(true);
@@ -45,14 +46,17 @@ export default function MediaPlayer({
                 clearInterval(timerRef.current);
             }
         };
-    }, [media, autoPlay, duration]);
+    }, [media, autoPlay, effectiveDurationSec]);
+
+    // Use duration in seconds; fallback to 5s so content always advances when 0 or missing
+    const effectiveDurationSec = (duration != null && duration > 0) ? duration : 5;
 
     const startImageTimer = () => {
         if (timerRef.current) {
             clearInterval(timerRef.current);
         }
 
-        const durationMs = duration * 1000;
+        const durationMs = effectiveDurationSec * 1000;
         const startTime = Date.now();
 
         timerRef.current = setInterval(() => {
@@ -81,6 +85,10 @@ export default function MediaPlayer({
     };
 
     const handleVideoEnded = () => {
+        if (videoDurationTimerRef.current) {
+            clearTimeout(videoDurationTimerRef.current);
+            videoDurationTimerRef.current = null;
+        }
         setIsPlaying(false);
         if (onComplete) {
             onComplete();
@@ -131,6 +139,29 @@ export default function MediaPlayer({
         });
         setLoadError('Failed to load media');
     };
+
+    // Video: respect playlist duration_seconds – advance after N seconds even if video is longer
+    useEffect(() => {
+        if (media?.file_type !== 'video' || !autoPlay || !effectiveDurationSec || effectiveDurationSec <= 0) {
+            return;
+        }
+        const durationMs = effectiveDurationSec * 1000;
+        videoDurationTimerRef.current = setTimeout(() => {
+            videoDurationTimerRef.current = null;
+            if (videoRef.current) {
+                videoRef.current.pause();
+            }
+            if (onComplete) {
+                onComplete();
+            }
+        }, durationMs);
+        return () => {
+            if (videoDurationTimerRef.current) {
+                clearTimeout(videoDurationTimerRef.current);
+                videoDurationTimerRef.current = null;
+            }
+        };
+    }, [media?.url, media?.file_type, autoPlay, effectiveDurationSec, onComplete]);
 
     // Reset error when media changes
     useEffect(() => {
