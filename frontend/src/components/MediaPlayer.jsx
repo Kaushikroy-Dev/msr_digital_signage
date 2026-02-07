@@ -24,39 +24,12 @@ export default function MediaPlayer({
     const timerRef = useRef(null);
     const videoDurationTimerRef = useRef(null);
 
-    useEffect(() => {
-        if (!autoPlay) {
-            if (media?.file_type === 'video' && videoRef.current) {
-                videoRef.current.pause();
-            } else if (media?.file_type === 'image') {
-                clearInterval(timerRef.current);
-            }
-            setIsPlaying(false);
-        } else {
-            if (media?.file_type === 'video' && videoRef.current) {
-                videoRef.current.play().catch(() => { });
-            } else if (media?.file_type === 'image') {
-                startImageTimer();
-            }
-            setIsPlaying(true);
-        }
-
-        return () => {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-            }
-        };
-    }, [media, autoPlay, effectiveDurationSec]);
-
-    // Use duration in seconds; fallback to 5s so content always advances when 0 or missing
-    const effectiveDurationSec = (duration != null && duration > 0) ? duration : 5;
-
-    const startImageTimer = () => {
+    const startImageTimer = (durationSec) => {
         if (timerRef.current) {
             clearInterval(timerRef.current);
         }
-
-        const durationMs = effectiveDurationSec * 1000;
+        const sec = (durationSec != null && durationSec > 0) ? durationSec : 5;
+        const durationMs = sec * 1000;
         const startTime = Date.now();
 
         timerRef.current = setInterval(() => {
@@ -74,6 +47,30 @@ export default function MediaPlayer({
             }
         }, 100);
     };
+
+    useEffect(() => {
+        if (!autoPlay) {
+            if (media?.file_type === 'video' && videoRef.current) {
+                videoRef.current.pause();
+            } else if (media?.file_type === 'image') {
+                clearInterval(timerRef.current);
+            }
+            setIsPlaying(false);
+        } else {
+            if (media?.file_type === 'video' && videoRef.current) {
+                videoRef.current.play().catch(() => { });
+            } else if (media?.file_type === 'image') {
+                startImageTimer(duration);
+            }
+            setIsPlaying(true);
+        }
+
+        return () => {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+            }
+        };
+    }, [media, autoPlay, duration]);
 
     // Removed togglePlay and toggleFullscreen - not needed in TV mode
 
@@ -142,10 +139,11 @@ export default function MediaPlayer({
 
     // Video: respect playlist duration_seconds – advance after N seconds even if video is longer
     useEffect(() => {
-        if (media?.file_type !== 'video' || !autoPlay || !effectiveDurationSec || effectiveDurationSec <= 0) {
+        const effectiveSec = (duration != null && duration > 0) ? duration : 5;
+        if (media?.file_type !== 'video' || !autoPlay || effectiveSec <= 0) {
             return;
         }
-        const durationMs = effectiveDurationSec * 1000;
+        const durationMs = effectiveSec * 1000;
         videoDurationTimerRef.current = setTimeout(() => {
             videoDurationTimerRef.current = null;
             if (videoRef.current) {
@@ -161,7 +159,7 @@ export default function MediaPlayer({
                 videoDurationTimerRef.current = null;
             }
         };
-    }, [media?.url, media?.file_type, autoPlay, effectiveDurationSec, onComplete]);
+    }, [media?.url, media?.file_type, autoPlay, duration, onComplete]);
 
     // Reset error when media changes
     useEffect(() => {
