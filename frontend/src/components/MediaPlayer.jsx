@@ -123,12 +123,48 @@ export default function MediaPlayer({
     const [loadError, setLoadError] = useState(null);
     const [imageRetryKey, setImageRetryKey] = useState(0);
     const retryCountRef = useRef(0);
+    const [cachedVideoUrl, setCachedVideoUrl] = useState(null);
+
+    // Check for cached video and get blob URL
+    useEffect(() => {
+        if (media?.file_type !== 'video' || !media?.id) return;
+
+        // Clean up previous blob URL
+        if (cachedVideoUrl) {
+            URL.revokeObjectURL(cachedVideoUrl);
+            setCachedVideoUrl(null);
+        }
+
+        // Try to get cached video
+        import('../utils/videoCache').then(({ getCachedVideoUrl }) => {
+            getCachedVideoUrl(media.id).then(blobUrl => {
+                if (blobUrl) {
+                    console.log('[MediaPlayer] Using cached video for:', media.id);
+                    setCachedVideoUrl(blobUrl);
+                } else {
+                    console.log('[MediaPlayer] No cached video, will stream:', media.id);
+                }
+            }).catch(err => {
+                console.warn('[MediaPlayer] Failed to get cached video:', err);
+            });
+        });
+
+        // Cleanup blob URL on unmount
+        return () => {
+            if (cachedVideoUrl) {
+                URL.revokeObjectURL(cachedVideoUrl);
+            }
+        };
+    }, [media?.id, media?.file_type]);
 
     if (!media) return null;
 
     const baseUrl = (API_BASE_URL || '').replace(/\/$/, '');
     const path = (media.url || '').startsWith('/') ? media.url : `/${media.url || ''}`;
-    const mediaUrl = `${baseUrl}${path}`;
+    const streamUrl = `${baseUrl}${path}`;
+    
+    // Use cached blob URL if available, otherwise stream from server
+    const mediaUrl = (media.file_type === 'video' && cachedVideoUrl) ? cachedVideoUrl : streamUrl;
 
     // Handle media loading errors with one retry for transient failures
     const handleError = (error) => {

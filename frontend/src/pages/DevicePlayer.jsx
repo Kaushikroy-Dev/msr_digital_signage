@@ -502,71 +502,56 @@ export default function DevicePlayer() {
         }
     }, [playerData, hasInitialContent]);
 
-    // Cache media URLs when playlist is loaded for faster access
-    useEffect(() => {
-        if (playerData?.items && playerData.items.length > 0) {
-            const mediaItems = playerData.items
-                .filter(item => item.url && (item.file_type === 'video' || item.file_type === 'image'))
-                .map(item => ({
-                    id: item.content_id || item.id,
-                    url: item.url
-                }));
+    // Pre-download all videos in playlist when it loads
+    const [downloadProgress, setDownloadProgress] = useState(null);
+    const [videosReady, setVideosReady] = useState(false);
 
-            if (mediaItems.length > 0) {
-                cacheMediaUrls(mediaItems, API_BASE_URL).catch(err => {
-                    console.warn('[Player] Failed to cache media URLs:', err);
-                });
-            }
+    useEffect(() => {
+        if (!playerData?.items || playerData.items.length === 0) return;
+
+        const videos = playerData.items.filter(item => item.file_type === 'video' && item.url);
+        
+        if (videos.length === 0) {
+            setVideosReady(true); // No videos to download
+            return;
         }
-    }, [playerData]);
+
+        console.log(`[Player] Starting pre-download of ${videos.length} videos...`);
+        setDownloadProgress({ current: 0, total: videos.length, downloading: true });
+
+        // Import the video cache utility dynamically
+        import('../utils/videoCache').then(({ predownloadPlaylist }) => {
+            predownloadPlaylist(
+                playerData.items,
+                API_BASE_URL,
+                (id, progress) => {
+                    // Individual video progress
+                    console.log(`[Player] Downloading ${id}: ${progress.toFixed(0)}%`);
+                },
+                (completed, total) => {
+                    // Overall progress
+                    console.log(`[Player] Download progress: ${completed}/${total}`);
+                    setDownloadProgress({ current: completed, total, downloading: completed < total });
+                    
+                    if (completed === total) {
+                        console.log('[Player] All videos downloaded and cached!');
+                        setVideosReady(true);
+                    }
+                }
+            ).catch(err => {
+                console.error('[Player] Failed to pre-download videos:', err);
+                // Still allow playback even if download fails
+                setVideosReady(true);
+                setDownloadProgress(null);
+            });
+        });
+    }, [playerData, API_BASE_URL]);
 
     const handleMediaComplete = () => {
         if (!playerData?.items) return;
         const nextIndex = (currentIndex + 1) % playerData.items.length;
         setCurrentIndex(nextIndex);
     };
-
-    // Video preloading: Preload next 1-2 videos while current video plays
-    useEffect(() => {
-        if (!playerData?.items || !isPlaying) return;
-
-        const preloadedVideos = [];
-        const maxPreload = 2; // Preload next 2 items
-
-        // Preload next videos (up to maxPreload items)
-        for (let i = 1; i <= maxPreload; i++) {
-            const nextIndex = (currentIndex + i) % playerData.items.length;
-            const nextItem = playerData.items[nextIndex];
-
-            // Only preload videos (not images or templates)
-            if (nextItem?.file_type === 'video' && nextItem?.url) {
-                const preloadVideo = document.createElement('video');
-                preloadVideo.preload = 'auto';
-                preloadVideo.src = `${API_BASE_URL}${nextItem.url}`;
-                preloadVideo.style.display = 'none';
-                preloadVideo.style.position = 'absolute';
-                preloadVideo.style.width = '1px';
-                preloadVideo.style.height = '1px';
-                preloadVideo.style.opacity = '0';
-                preloadVideo.style.pointerEvents = 'none';
-
-                // Add to document for preloading
-                document.body.appendChild(preloadVideo);
-                preloadedVideos.push(preloadVideo);
-
-                console.log(`[Player] Preloading next video ${i}: ${nextItem.name || nextItem.url}`);
-            }
-        }
-
-        // Cleanup function: remove preloaded videos when component unmounts or dependencies change
-        return () => {
-            preloadedVideos.forEach(video => {
-                if (video.parentNode) {
-                    video.parentNode.removeChild(video);
-                }
-            });
-        };
-    }, [currentIndex, playerData, isPlaying, API_BASE_URL]);
 
     // Pairing Mode UI
     if (!deviceId) {
@@ -899,6 +884,56 @@ export default function DevicePlayer() {
 
     return (
         <div className="device-player-container tv-mode">
+            {/* Show download progress overlay while downloading videos */}
+            {downloadProgress?.downloading && (
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.9)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999
+                }}>
+                    <div style={{
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        padding: '40px',
+                        borderRadius: '12px',
+                        textAlign: 'center',
+                        minWidth: '400px'
+                    }}>
+                        <h2 style={{ color: '#fff', marginBottom: '20px', fontSize: '24px' }}>
+                            Preparing Videos...
+                        </h2>
+                        <p style={{ color: 'rgba(255,255,255,0.8)', marginBottom: '30px', fontSize: '16px' }}>
+                            Downloading videos for smooth playback
+                        </p>
+                        <div style={{
+                            width: '100%',
+                            height: '8px',
+                            background: 'rgba(255,255,255,0.2)',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            marginBottom: '15px'
+                        }}>
+                            <div style={{
+                                width: `${(downloadProgress.current / downloadProgress.total) * 100}%`,
+                                height: '100%',
+                                background: 'linear-gradient(90deg, #4f46e5, #7c3aed)',
+                                transition: 'width 0.3s ease'
+                            }} />
+                        </div>
+                        <p style={{ color: '#fff', fontSize: '18px', fontWeight: '600' }}>
+                            {downloadProgress.current} / {downloadProgress.total} videos
+                        </p>
+                    </div>
+                </div>
+            )}
+            
             <MediaPlayer
                 key={currentIndex}
                 media={currentMedia}
