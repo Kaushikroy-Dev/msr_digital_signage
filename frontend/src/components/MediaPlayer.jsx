@@ -130,21 +130,9 @@ export default function MediaPlayer({
     const path = (media.url || '').startsWith('/') ? media.url : `/${media.url || ''}`;
     const mediaUrl = `${baseUrl}${path}`;
 
-    // Diagnostic: fetch URL on error to log HTTP status (helps debug 404/500/CORS)
-    const logMediaStatus = (url) => {
-        fetch(url, { method: 'HEAD', mode: 'cors' })
-            .then((r) => console.warn('[MediaPlayer] Media URL status:', r.status, r.statusText, url))
-            .catch((e) => console.warn('[MediaPlayer] Media URL fetch failed:', e.message, url));
-    };
-
     // Handle media loading errors with one retry for transient failures
     const handleError = (error) => {
-        console.error('[MediaPlayer] Error loading media:', {
-            url: mediaUrl,
-            error: error.message || 'Unknown error',
-            mediaType: media.file_type
-        });
-        logMediaStatus(mediaUrl);
+        console.warn('[MediaPlayer] Error loading media:', media.file_type, mediaUrl);
 
         if (retryCountRef.current >= 1) {
             setLoadError('Failed to load media');
@@ -201,12 +189,10 @@ export default function MediaPlayer({
         retryCountRef.current = 0;
     }, [media.url]);
 
-    // When load fails after retry, auto-advance after 3s so playlist does not get stuck
+    // When load fails after retry, auto-advance after 2s so playlist does not get stuck (e.g. 404)
     useEffect(() => {
         if (!loadError || !onComplete) return;
-        const t = setTimeout(() => {
-            onComplete();
-        }, 3000);
+        const t = setTimeout(() => onComplete(), 2000);
         return () => clearTimeout(t);
     }, [loadError, onComplete]);
 
@@ -252,8 +238,8 @@ export default function MediaPlayer({
                                 color: 'white',
                                 background: 'rgba(0, 0, 0, 0.7)'
                             }}>
-                                <p style={{ fontSize: '18px', marginBottom: '10px' }}>Video failed to load</p>
-                                <p style={{ fontSize: '14px', opacity: 0.7 }}>{loadError}</p>
+                                <p style={{ fontSize: '18px', marginBottom: '10px' }}>Media failed to load</p>
+                                <p style={{ fontSize: '14px', opacity: 0.7 }}>Advancing in 2s. If 404: add persistent storage to content service (see docs).</p>
                             </div>
                         ) : (
                             <div className="media-stage">
