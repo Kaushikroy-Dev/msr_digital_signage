@@ -121,20 +121,34 @@ export default function MediaPlayer({
     };
 
     const [loadError, setLoadError] = useState(null);
+    const retryCountRef = useRef(0);
 
     if (!media) return null;
 
     const apiUrl = API_BASE_URL;
     const mediaUrl = `${apiUrl}${media.url}`;
 
-    // Handle media loading errors
+    // Handle media loading errors with one retry for transient failures
     const handleError = (error) => {
         console.error('[MediaPlayer] Error loading media:', {
             url: mediaUrl,
             error: error.message || 'Unknown error',
             mediaType: media.file_type
         });
-        setLoadError('Failed to load media');
+        if (media.file_type === 'video' && retryCountRef.current < 1 && videoRef.current) {
+            retryCountRef.current += 1;
+            setLoadError(null);
+            const src = videoRef.current.src;
+            setTimeout(() => {
+                if (videoRef.current) {
+                    videoRef.current.src = '';
+                    videoRef.current.src = src;
+                    videoRef.current.load();
+                }
+            }, 1500);
+        } else {
+            setLoadError('Failed to load media');
+        }
     };
 
     // Video: respect playlist duration_seconds – advance after N seconds even if video is longer
@@ -161,20 +175,14 @@ export default function MediaPlayer({
         };
     }, [media?.url, media?.file_type, autoPlay, duration, onComplete]);
 
-    // Reset error when media changes
+    // Reset error and retry count when media changes
     useEffect(() => {
         setLoadError(null);
+        retryCountRef.current = 0;
     }, [media.url]);
 
-    // Auto-enter fullscreen on mount for TV mode
-    useEffect(() => {
-        if (autoPlay && containerRef.current && !document.fullscreenElement) {
-            containerRef.current.requestFullscreen().catch(() => {
-                // Ignore fullscreen errors (some browsers require user interaction)
-                console.log('Fullscreen request failed (may require user interaction)');
-            });
-        }
-    }, [autoPlay]);
+    // Do not auto-request fullscreen: browsers/WebView require a user gesture.
+    // Native TV apps can enable fullscreen themselves if needed.
 
     const overlayStyle = effect === 'none'
         ? { animation: 'none' }
